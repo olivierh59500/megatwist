@@ -1,16 +1,21 @@
+// main.go
 package main
 
 import (
+	"embed"
+	"encoding/json"
+	"fmt"
 	"image"
-	"image/png"
+	"image/color"
 	"log"
 	"math"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 const (
@@ -19,549 +24,1085 @@ const (
 	zoom         = 2
 	backHeight   = 64
 	fontHeight   = 36
+	spriteSize   = 32
 )
 
-var (
-	// Debug flag
-	debug = false
+// Wave types
+const (
+	cdZero = iota
+	cdSlowSin
+	cdMedSin
+	cdFastSin
+	cdSlowDist
+	cdMedDist
+	cdFastDist
+	cdSplitted
+	bgSin1
+	bgSin2
+	bgSin3
+)
 
+// Embed assets
+//go:embed assets/*
+var assets embed.FS
+
+// Config represents user configuration
+type Config struct {
+	Fullscreen     bool    `json:"fullscreen"`
+	VSync          bool    `json:"vsync"`
+	MusicVolume    float64 `json:"musicVolume"`
+	SpriteCount    int     `json:"spriteCount"`
+	DistortionRate float64 `json:"distortionRate"`
+	EnableCRT      bool    `json:"enableCRT"`
+	EnableGlow     bool    `json:"enableGlow"`
+}
+
+// Letter represents a character in the font
+type Letter struct {
+	char  rune
+	x, y  int
+	width int
+}
+
+// Sprite represents a logo sprite
+type Sprite struct {
+	x, y  float64
+	index int
+}
+
+// Delete PrecomputedFrame as it's no longer needed
+
+// Game represents the game state
+type Game struct {
 	// Images
-	backImg *ebiten.Image
-	fontImg *ebiten.Image
-	logoImg *ebiten.Image
+	backImg  *ebiten.Image
+	fontImg  *ebiten.Image
+	logoImg  *ebiten.Image
 
-	// Canvases
-	mainCanvas   *ebiten.Image
-	backCanvas   *ebiten.Image
-	scrollCanvas *ebiten.Image
+	// Surfaces
+	surfMain    *ebiten.Image
+	surfScroll  *ebiten.Image
+	surfBack    *ebiten.Image
+	surfScroll1 *ebiten.Image
+	surfScroll2 *ebiten.Image
 
-	// Animation state
-	iteration    float64
-	ctrSprite    float64 // Compteur pour les trajectoires des sprites
-	backWavePos  float64
-	frontWavePos float64
+	// Audio
+	audioContext *audio.Context
+	audioPlayer  *audio.Player
+
+	// State
+	state        string // "intro", "splash", "demo"
+	iteration    int
+	backWavePos  int
+	frontWavePos int
 	letterNum    int
-	letterDecal  float64
-	startTime    time.Time
-	useDeltaTime = 1
+	letterDecal  int
+
+	// Intro
+	introX      int
+	introLetter int
+	introTile   int
+	introSpeed  int
 
 	// Sprites
-	sprites []*Sprite
-
-	// Wave types
-	cdZero     = 0
-	cdSlowSin  = 1
-	cdMedSin   = 2
-	cdFastSin  = 3
-	cdSlowDist = 4
-	cdMedDist  = 5
-	cdFastDist = 6
-	cdSplitted = 7
-	bgSin1     = 8
-	bgSin2     = 9
-	bgSin3     = 10
+	sprites   []*Sprite
+	ctrSprite float64
 
 	// Wave tables
-	backIntroWaveTable  = []int{cdZero, cdZero, cdZero, cdZero, cdZero}
-	backMainWaveTable   = []int{bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3, bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3, bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3, cdSplitted}
-	frontIntroWaveTable = []int{cdZero, cdZero, cdZero, cdZero, cdZero, cdZero, cdZero, cdZero, cdZero, cdZero, cdFastSin, cdMedSin, cdSlowSin, cdSplitted}
-	frontMainWaveTable  = []int{cdSlowSin, cdSlowSin, cdSlowDist, cdSlowSin, cdSlowSin, cdMedSin, cdFastSin, cdMedSin, cdSlowSin, cdMedDist, cdMedSin, cdSlowSin, cdSplitted}
+	backIntroWaveTable  []int
+	backMainWaveTable   []int
+	frontIntroWaveTable []int
+	frontMainWaveTable  []int
 
-	// Precomputed data
-	curve          = make(map[int][]float64)
-	backIntroWave  []float64
-	backMainWave   []float64
-	frontIntroWave []float64
-	frontMainWave  []float64
-	position       []float64
+	// Precalc
+	curves          [][]int
+	backIntroWave   []int
+	backMainWave    []int
+	frontIntroWave  []int
+	frontMainWave   []int
+	position        []int
 
-	// Font mapping
-	letter = [][]interface{}{
-		{" ", 0, 0, 32}, {"!", 48, 0, 16}, {"\"", 96, 0, 32}, {"'", 336, 0, 16},
-		{"(", 384, 0, 32}, {")", 432, 0, 32}, {"+", 48, 36, 48}, {",", 96, 36, 16},
-		{"-", 144, 36, 32}, {".", 192, 36, 16}, {"0", 288, 36, 48}, {"1", 336, 36, 48},
-		{"2", 384, 36, 48}, {"3", 432, 36, 48}, {"4", 0, 72, 48}, {"5", 48, 72, 48},
-		{"6", 96, 72, 48}, {"7", 144, 72, 48}, {"8", 192, 72, 48}, {"9", 240, 72, 48},
-		{":", 288, 72, 16}, {";", 336, 72, 16}, {"<", 384, 72, 32}, {"=", 432, 72, 32},
-		{">", 0, 108, 32}, {"?", 48, 108, 48}, {"A", 144, 108, 48}, {"B", 192, 108, 48},
-		{"C", 240, 108, 48}, {"D", 288, 108, 48}, {"E", 336, 108, 48}, {"F", 384, 108, 48},
-		{"G", 432, 108, 48}, {"H", 0, 144, 48}, {"I", 48, 144, 16}, {"J", 96, 144, 48},
-		{"K", 144, 144, 48}, {"L", 192, 144, 48}, {"M", 240, 144, 48}, {"N", 288, 144, 48},
-		{"O", 336, 144, 48}, {"P", 384, 144, 48}, {"Q", 432, 144, 48}, {"R", 0, 180, 48},
-		{"S", 48, 180, 48}, {"T", 96, 180, 48}, {"U", 144, 180, 48}, {"V", 192, 180, 48},
-		{"W", 240, 180, 48}, {"X", 288, 180, 48}, {"Y", 336, 180, 48}, {"Z", 384, 180, 48},
-	}
+	// Font data
+	letterData map[rune]*Letter
 
 	// Text
-	spc  = "     "
-	text = spc + spc + spc + spc +
-		"SALUT DIDIER ET PHILIPPE, EH OUAIS DMA IS BACK IN RETRO-DEMOSCENE." + spc + spc +
-		"BILIZIR PROUDLY PRESENTS HIS FIRST DEMO-SCREEN IN GOLANG AND EBITEN" + spc + spc +
-		"AND NOW, SOME GREETING : ALL MEMBERS OF DMA" + spc + "ALL MEMBERS OF THE UNION" + spc + "ELKMOOSE, COMMODOREBLOG" + spc + "AND ALL DEMOSCENE LOVERS :)" + spc + spc +
+	text      string
+	introText string
+
+	// Config
+	config *Config
+
+	// Shaders
+	crtShader *ebiten.Shader
+
+	// Transition
+	transitionProgress float64
+	lastState          string
+}
+
+// CRT shader source
+const crtShaderSrc = `
+package main
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	var uv vec2
+	uv = texCoord
+
+	// Barrel distortion
+	var dc vec2
+	dc = uv - 0.5
+	dc = dc * (1.0 + dot(dc, dc) * 0.15)
+	uv = dc + 0.5
+
+	// Check bounds
+	if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+
+	// Sample texture
+	var col vec4
+	col = imageSrc0At(uv)
+
+	// Scanlines
+	var scanline float
+	scanline = sin(uv.y * 800.0) * 0.04
+	col.rgb = col.rgb - scanline
+
+	// RGB shift
+	var rShift float
+	var bShift float
+	rShift = imageSrc0At(uv + vec2(0.002, 0.0)).r
+	bShift = imageSrc0At(uv - vec2(0.002, 0.0)).b
+	col.r = rShift
+	col.b = bShift
+
+	// Vignette
+	var vignette float
+	vignette = 1.0 - dot(dc, dc) * 0.5
+	col.rgb = col.rgb * vignette
+
+	return col * color
+}
+`
+
+// NewGame creates a new game instance
+func NewGame() *Game {
+	g := &Game{
+		state:       "intro",
+		introX:      -1,
+		introLetter: -1,
+		introTile:   -1,
+		introSpeed:  4,
+		letterData:  make(map[rune]*Letter),
+		lastState:   "",
+	}
+
+	// Load config
+	g.config = g.loadConfig()
+
+	// Initialize sprites based on config
+	g.sprites = make([]*Sprite, g.config.SpriteCount)
+	for i := 0; i < g.config.SpriteCount; i++ {
+		g.sprites[i] = &Sprite{
+			x:     float64(screenWidth) / 2,
+			y:     float64(screenHeight) / 2,
+			index: i,
+		}
+	}
+
+	// Initialize wave tables
+	g.backIntroWaveTable = []int{cdZero, cdZero, cdZero, cdZero, cdZero}
+	g.backMainWaveTable = []int{
+		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
+		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
+		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
+		cdSplitted,
+	}
+	g.frontIntroWaveTable = []int{
+		cdZero, cdZero, cdZero, cdZero, cdZero,
+		cdZero, cdZero, cdZero, cdZero, cdZero,
+		cdFastSin, cdMedSin, cdSlowSin, cdSplitted,
+	}
+	g.frontMainWaveTable = []int{
+		cdSlowSin, cdSlowSin, cdSlowDist, cdSlowSin,
+		cdSlowSin, cdMedSin, cdFastSin, cdMedSin,
+		cdSlowSin, cdMedDist, cdMedSin, cdSlowSin,
+		cdSplitted,
+	}
+
+	// Initialize text
+	spc := "     "
+	g.text = spc + spc + spc +
+		"BILIZIR PRESENTS HIS SECOND DEMO-SCREEN IN GOLANG USING EBITEN." + spc +
+		"THE CREDITS FOR THIS SCREEN : " +
+		"ORIGINAL SCREEN AND IDEA BY DYNO, " +
+		"CODED IN GOLANG BY BILIZIR FROM DMA, " +
+		"ORIGINAL FONT BY OXAR, " +
+		"BACKGROUND BY AGENT-T CREAM, " +
+		"MUSIC BY MAD MAX FROM THE EXCEPTIONS." + spc +
+		"AND NOW, SOME GREETING :  " +
+		"MEGA-GREETINGS TO ALL MEMBERS OF DMA (PDM, COCO, JINX, TWISTER, DWORKIN) AND ALL MEMBERS OF THE UNION ! " +
+		"LAST BUT NOT LEAST, I'D LIKE TO SEND A SPECIAL DEDICATION TO ALL DEMOSCENE LOVERS " + spc +
 		"IT'S NOW TIME TO WRAP !" + spc
-)
 
-// Structure pour un sprite
-type Sprite struct {
-	X, Y       float64
-	Trajectory func(float64) (float64, float64)
+	g.introText = spc +
+		"ONCE UPON A TIME, THERE WAS A SCREEN CALLED <THE PARALLAX DISTORTER> BY ULM.      " +
+		"35 YEARS LATER, JUST FOR FUN, BILIZIR RECODED A VERSION IN GOLANG (ADAPTED FROM DYNO'S VERSION) !                    ";
+
+	return g
 }
 
-// Créer les 6 sprites avec la logique de sprites(), en évitant les sorties d’écran
-func initSprites() {
-	nbSprites := 10
-	sprites = make([]*Sprite, nbSprites)
-	for i := 0; i < nbSprites; i++ {
-		spriteIndex := i // Capturer l'index pour la closure
-		sprites[i] = &Sprite{
-			Trajectory: func(t float64) (float64, float64) {
-				// Simuler la logique de sprites()
-				c := ctrSprite + float64(spriteIndex)*0.155 // Incrément par sprite
-				// Centrer autour de (208, 138)
-				centerX, centerY := float64(screenWidth)/2, float64(screenHeight)/2
-				// Réduire les amplitudes pour rester dans l’écran
-				posx := centerX + 100*math.Sin(c*1.35+1.25) + 100*math.Sin(c*1.86+0.54)
-				posy := centerY + 60*math.Cos(c*1.72+0.23) + 60*math.Cos(c*1.63+0.98)
-				// Ajustement par sprite
-				posx += 20 * math.Sin(float64(spriteIndex)*0.289+1.15)
-				posy += 20 * math.Cos(float64(spriteIndex)*0.456+0.85)
-				// Limiter les positions pour éviter les sorties d’écran (sprite 32x32)
-				if posx < 16 {
-					posx = 16
-				} else if posx > screenWidth-16 {
-					posx = screenWidth - 16
-				}
-				if posy < 16 {
-					posy = 16
-				} else if posy > screenHeight-16 {
-					posy = screenHeight - 16
-				}
-				return posx, posy
-			},
+// loadConfig loads or creates default configuration
+func (g *Game) loadConfig() *Config {
+	data, err := os.ReadFile("config.json")
+	if err != nil {
+		// Return default config
+		return &Config{
+			Fullscreen:     false,
+			VSync:          true,
+			MusicVolume:    0.7,
+			SpriteCount:    10,
+			DistortionRate: 1.0,
+			EnableCRT:      true,
+			EnableGlow:     true,
 		}
 	}
-}
 
-type Game struct {
-	audioContext *audio.Context
-	player       *audio.Player
-}
-
-func init() {
-	// Activer le debug via la variable d'environnement DEBUG=1
-	if os.Getenv("DEBUG") == "1" {
-		debug = true
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return g.loadConfig() // Return default on parse error
 	}
-	// Initialiser les sprites
-	initSprites()
+
+	// Validate config
+	if cfg.SpriteCount <= 0 {
+		cfg.SpriteCount = 10
+	}
+	if cfg.DistortionRate <= 0 {
+		cfg.DistortionRate = 1.0
+	}
+	if cfg.MusicVolume < 0 || cfg.MusicVolume > 1 {
+		cfg.MusicVolume = 0.7
+	}
+
+	return &cfg
 }
 
-func toRadians(angle float64) float64 {
-	return angle * (math.Pi / 180)
-}
+// Init initializes the game
+func (g *Game) Init() error {
+	// Set performance options
+	ebiten.SetMaxTPS(60)
+	ebiten.SetVsyncEnabled(g.config.VSync)
 
-func createCurve(funcID int, step, progress float64) {
-	var local []float64
-	decal, previous := 0.0, 0.0
-	limit := 360.0
-	if funcID == cdSplitted {
-		limit = 720.0
-	}
-	c := 0
-	for i := 0.0; i < limit-step; i += step {
-		switch funcID {
-		case cdZero:
-			local = append(local, 0)
-		case cdSlowSin:
-			local = append(local, 140*math.Sin(toRadians(i)))
-		case cdMedSin:
-			local = append(local, 175*math.Sin(toRadians(i)))
-		case cdFastSin:
-			local = append(local, 210*math.Sin(toRadians(i)))
-		case cdSlowDist:
-			local = append(local, 100*math.Sin(toRadians(i))+25.0*math.Sin(toRadians(i*10)))
-		case cdMedDist:
-			local = append(local, 110*math.Sin(toRadians(i))+27.5*math.Sin(toRadians(i*9)))
-		case cdFastDist:
-			local = append(local, 120*math.Sin(toRadians(i))+30.0*math.Sin(toRadians(i*8)))
-		case cdSplitted:
-			dir := 1.0
-			if c%2 != 0 {
-				dir = -1
-			}
-			amp := 12.0
-			if i < 160 {
-				amp *= i / 160
-			} else if (720 - 160) < i {
-				amp *= (720 - i) / 160
-			}
-			local = append(local, 90*math.Sin(toRadians(i))+dir*amp*math.Sin(toRadians(i*3)))
-		case bgSin1:
-			local = append(local, -60*math.Sin(toRadians(i)))
-		case bgSin2:
-			local = append(local, -60*math.Sin(toRadians(i)))
-		case bgSin3:
-			local = append(local, -60*math.Sin(toRadians(i))-15*math.Sin(toRadians(i*4)))
-		}
-		c++
-	}
-	curve[funcID] = make([]float64, len(local))
-	for i := 0; i < len(local); i++ {
-		nitem := -math.Floor(local[i] - decal)
-		curve[funcID][i] = nitem - previous
-		previous = nitem
-		decal += progress / float64(len(local))
-	}
-}
+	// Load images from embedded assets
+	var err error
 
-func getLetter(str string, pos int) int {
-	for idx, l := range letter {
-		if l[0].(string) == string(str[pos%len(str)]) {
-			return idx
-		}
+	// Load back image
+	backData, _ := assets.ReadFile("assets/back.png")
+	g.backImg, _, err = ebitenutil.NewImageFromReader(strings.NewReader(string(backData)))
+	if err != nil {
+		// Create placeholder if not found
+		g.backImg = ebiten.NewImage(8, backHeight)
+		g.backImg.Fill(color.RGBA{64, 32, 128, 255})
 	}
-	return 0
-}
 
-func displayText(letterDecal int) {
-	scrollCanvas.Clear()
-	x := 0
-	for i := 0; x < scrollCanvas.Bounds().Dx() && i < len(text); i++ {
-		j := getLetter(text, i+letterDecal)
-		l := letter[j]
+	// Load font image
+	fontData, _ := assets.ReadFile("assets/font.png")
+	g.fontImg, _, err = ebitenutil.NewImageFromReader(strings.NewReader(string(fontData)))
+	if err != nil {
+		return err
+	}
+
+	// Load logo image
+	logoData, _ := assets.ReadFile("assets/logo.png")
+	g.logoImg, _, err = ebitenutil.NewImageFromReader(strings.NewReader(string(logoData)))
+	if err != nil {
+		// Create placeholder logo
+		g.logoImg = ebiten.NewImage(spriteSize, spriteSize)
+		g.logoImg.Fill(color.RGBA{255, 255, 0, 255})
+	}
+
+	// Create surfaces
+	g.surfMain = ebiten.NewImage(screenWidth, screenHeight)
+	g.surfScroll = ebiten.NewImage(int(math.Round(screenWidth*1.6)), fontHeight)
+	g.surfBack = ebiten.NewImage(screenWidth+256, backHeight) // More width for distortion
+	g.surfScroll1 = ebiten.NewImage(screenWidth+48, fontHeight)
+	g.surfScroll2 = ebiten.NewImage(screenWidth+48, fontHeight)
+
+	// Initialize font data
+	g.initFontData()
+
+	// Initialize curves
+	g.curves = make([][]int, 11)
+	g.createCurves()
+
+	// Precalculate
+	g.precalcPosition()
+	g.precalcWave(g.frontIntroWaveTable, &g.frontIntroWave)
+	g.precalcWave(g.frontMainWaveTable, &g.frontMainWave)
+	g.precalcWave(g.backIntroWaveTable, &g.backIntroWave)
+	g.precalcWave(g.backMainWaveTable, &g.backMainWave)
+
+	// Prepare background surface
+	g.surfBack.Clear()
+	// Fill the entire background surface with tiled background image
+	for i := 0; i < g.surfBack.Bounds().Dx(); i += g.backImg.Bounds().Dx() {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(x), 0)
-		subImgRect := image.Rect(l[1].(int), l[2].(int), l[1].(int)+l[3].(int), l[2].(int)+fontHeight)
-		if debug {
-			log.Printf("Drawing letter %d, char: %v, rect: %v, x=%d", i, l[0], subImgRect, x)
-		}
-		scrollCanvas.DrawImage(fontImg.SubImage(subImgRect).(*ebiten.Image), op)
-		x += l[3].(int)
+		op.GeoM.Translate(float64(i), 0)
+		g.surfBack.DrawImage(g.backImg, op)
 	}
-	if debug {
-		log.Printf("displayText rendered, letterDecal: %d, scrollCanvas size: %v", letterDecal, scrollCanvas.Bounds().Size())
+
+	// Initialize audio
+	g.audioContext = audio.NewContext(44100)
+
+	// Load and play music
+	if err := g.loadMusic(); err != nil {
+		log.Printf("Warning: Could not load music: %v", err)
 	}
-}
 
-func doPrecalcPosition() {
-	count, x := 0, 0
-	for i := 0; i < len(text); i++ {
-		j := getLetter(text, i)
-		count += letter[j][3].(int)
-		position = append(position, float64(count))
-		x++
-	}
-}
-
-func doPrecalcWave(srcWaveTable []int, dstWaveTable *[]float64) {
-	count, x := 0.0, 0
-	for _, waveType := range srcWaveTable {
-		wave := curve[waveType]
-		for _, val := range wave {
-			count += val
-			*dstWaveTable = append(*dstWaveTable, count)
-			x++
-		}
-	}
-}
-
-func getSum(array []float64, index int, decal float64) float64 {
-	n := len(array)
-	if n == 0 {
-		return decal
-	}
-	max := array[n-1]
-	f := index / n
-	m := index % n
-	return decal + float64(f)*max + array[m]
-}
-
-func getWave(i int, introWave, mainWave []float64) float64 {
-	if i < len(introWave) {
-		return getSum(introWave, i, 0)
-	}
-	return getSum(mainWave, i-len(introWave), introWave[len(introWave)-1])
-}
-
-func getPosition(i int) float64 {
-	if i > 0 {
-		return getSum(position, i-1, 0)
-	}
-	return 0
-}
-
-func (g *Game) Update() error {
-	if useDeltaTime == 1 {
-		deltaTime := time.Since(startTime).Seconds()
-		iteration = math.Floor(deltaTime * 60)
-	} else {
-		iteration++
-	}
-	backWavePos = iteration * 5
-	frontWavePos = iteration * 8
-
-	// Incrémenter ctrSprite pour les trajectoires des sprites
-	ctrSprite += 0.0253
-
-	// Mettre à jour les positions des sprites
-	for i, sprite := range sprites {
-		sprite.X, sprite.Y = sprite.Trajectory(iteration)
-		if debug {
-			log.Printf("Sprite %d position: (%.2f, %.2f)", i, sprite.X, sprite.Y)
+	// Compile CRT shader if enabled
+	if g.config.EnableCRT {
+		g.crtShader, err = ebiten.NewShader([]byte(crtShaderSrc))
+		if err != nil {
+			log.Printf("Warning: Could not compile CRT shader: %v", err)
+			g.config.EnableCRT = false
 		}
 	}
 
-	// Stop music on Space key press
-	if ebiten.IsKeyPressed(ebiten.KeySpace) && g.player != nil {
-		g.player.Pause()
-	}
-
-	// Toggle debug mode with 'D' key
-	if ebiten.IsKeyPressed(ebiten.KeyD) {
-		debug = !debug
-		if debug {
-			log.Println("Debug mode enabled")
-		} else {
-			log.Println("Debug mode disabled")
-		}
-	}
-
-	if debug {
-		log.Printf("Update: iteration=%.6f, backWavePos=%.6f, frontWavePos=%.6f, ctrSprite=%.6f", iteration, backWavePos, frontWavePos, ctrSprite)
-	}
 	return nil
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
-	// Bounce values
-	bounceBack := math.Floor(math.Abs(30.1 * math.Sin(toRadians(math.Mod(iteration, 42)*4.26))))
-	bounceFront := math.Floor(math.Abs(18.1 * math.Sin(toRadians(math.Mod(iteration, 42)*4.26))))
-
-	// Calculate decal_x
-	decalX := 999999999.0
-	for ligne := 0; ligne < screenHeight; ligne++ {
-		c := getWave(int(frontWavePos)+ligne, frontIntroWave, frontMainWave)
-		if c < decalX {
-			if c > 0 {
-				decalX = c
-			} else {
-				decalX = 0
-			}
-		}
-	}
-	if debug {
-		log.Printf("decalX: %.6f", decalX)
+// loadMusic loads and plays the music file
+func (g *Game) loadMusic() error {
+	musicData, err := assets.ReadFile("assets/music.mp3")
+	if err != nil {
+		return err
 	}
 
-	// Calculate first letter
-	dir := 0
-	if decalX > letterDecal {
-		dir = 1
-	}
-	if decalX < letterDecal {
-		dir = -1
-	}
-	i := 0
-	for decalX < getPosition(letterNum+i) || getPosition(letterNum+i+1) <= decalX {
-		i += dir
-	}
-	letterNum += i
-	letterDecal = getPosition(letterNum)
-	if debug {
-		log.Printf("letterNum: %d, letterDecal: %.6f", letterNum, letterDecal)
+	d, err := mp3.DecodeWithSampleRate(g.audioContext.SampleRate(), strings.NewReader(string(musicData)))
+	if err != nil {
+		return err
 	}
 
-	// Render text to scroll canvas
-	displayText(letterNum)
-
-	// Render to main canvas
-	mainCanvas.Clear()
-	for ligne := 0; ligne < screenHeight; ligne++ {
-		// Background
-		backXFloat := 80 + math.Floor(getWave(int(backWavePos+float64(ligne)), backIntroWave, backMainWave)/2)
-		backX := int(backXFloat) % 8
-		if backX < 0 {
-			backX += 8
-		}
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, float64(ligne))
-		backRect := image.Rect(backX, int(math.Mod(float64(ligne)+bounceBack, backHeight)), backX+screenWidth, int(math.Mod(float64(ligne)+bounceBack, backHeight))+1)
-		if debug {
-			log.Printf("backCanvas SubImage rect: %v", backRect)
-		}
-		mainCanvas.DrawImage(backCanvas.SubImage(backRect).(*ebiten.Image), op)
-		if debug {
-			log.Printf("Drew backCanvas line %d, backX: %d", ligne, backX)
-		}
-
-		// Scroll text
-		scrollX := getWave(int(frontWavePos+float64(ligne)), frontIntroWave, frontMainWave) - letterDecal
-		op = &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, float64(ligne))
-		scrollRect := image.Rect(int(scrollX), int(math.Mod(float64(ligne)+bounceFront, fontHeight)), int(scrollX)+screenWidth, int(math.Mod(float64(ligne)+bounceFront, fontHeight))+1)
-		if debug {
-			log.Printf("scrollCanvas SubImage rect: %v, scrollX: %f", scrollRect, scrollX)
-		}
-		mainCanvas.DrawImage(scrollCanvas.SubImage(scrollRect).(*ebiten.Image), op)
-		if debug {
-			log.Printf("Drew scrollCanvas line %d, scrollX: %f", ligne, scrollX)
-		}
+	loop := audio.NewInfiniteLoop(d, d.Length())
+	g.audioPlayer, err = g.audioContext.NewPlayer(loop)
+	if err != nil {
+		return err
 	}
 
-	// Dessiner les sprites
-	for i, sprite := range sprites {
-		op := &ebiten.DrawImageOptions{}
-		// Centrer le logo (32x32)
-		op.GeoM.Translate(sprite.X-16, sprite.Y-16)
-		mainCanvas.DrawImage(logoImg, op)
-		if debug {
-			log.Printf("Drew sprite %d at (%.2f, %.2f)", i, sprite.X, sprite.Y)
-		}
+	g.audioPlayer.SetVolume(g.config.MusicVolume)
+	g.audioPlayer.Play()
+	return nil
+}
+
+// initFontData initializes the font character data
+func (g *Game) initFontData() {
+	data := []struct {
+		char  rune
+		x, y  int
+		width int
+	}{
+		{' ', 0, 0, 32},
+		{'!', 48, 0, 16},
+		{'"', 96, 0, 32},
+		{'\'', 336, 0, 16},
+		{'(', 384, 0, 32},
+		{')', 432, 0, 32},
+		{'+', 48, 36, 48},
+		{',', 96, 36, 16},
+		{'-', 144, 36, 32},
+		{'.', 192, 36, 16},
+		{'0', 288, 36, 48},
+		{'1', 336, 36, 48},
+		{'2', 384, 36, 48},
+		{'3', 432, 36, 48},
+		{'4', 0, 72, 48},
+		{'5', 48, 72, 48},
+		{'6', 96, 72, 48},
+		{'7', 144, 72, 48},
+		{'8', 192, 72, 48},
+		{'9', 240, 72, 48},
+		{':', 288, 72, 16},
+		{';', 336, 72, 16},
+		{'<', 384, 72, 32},
+		{'=', 432, 72, 32},
+		{'>', 0, 108, 32},
+		{'?', 48, 108, 48},
+		{'A', 144, 108, 48},
+		{'B', 192, 108, 48},
+		{'C', 240, 108, 48},
+		{'D', 288, 108, 48},
+		{'E', 336, 108, 48},
+		{'F', 384, 108, 48},
+		{'G', 432, 108, 48},
+		{'H', 0, 144, 48},
+		{'I', 48, 144, 16},
+		{'J', 96, 144, 48},
+		{'K', 144, 144, 48},
+		{'L', 192, 144, 48},
+		{'M', 240, 144, 48},
+		{'N', 288, 144, 48},
+		{'O', 336, 144, 48},
+		{'P', 384, 144, 48},
+		{'Q', 432, 144, 48},
+		{'R', 0, 180, 48},
+		{'S', 48, 180, 48},
+		{'T', 96, 180, 48},
+		{'U', 144, 180, 48},
+		{'V', 192, 180, 48},
+		{'W', 240, 180, 48},
+		{'X', 288, 180, 48},
+		{'Y', 336, 180, 48},
+		{'Z', 384, 180, 48},
 	}
 
-	// Draw main canvas to screen with zoom
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(float64(zoom), float64(zoom))
-	screen.DrawImage(mainCanvas, op)
-	if debug {
-		log.Printf("Rendered mainCanvas to screen, size: %v", mainCanvas.Bounds().Size())
+	for _, d := range data {
+		g.letterData[d.char] = &Letter{
+			char:  d.char,
+			x:     d.x,
+			y:     d.y,
+			width: d.width,
+		}
 	}
 }
 
+// createCurves generates the wave curves
+func (g *Game) createCurves() {
+	for funcType := 0; funcType <= 10; funcType++ {
+		var step, progress float64
+
+		switch funcType {
+		case cdZero:
+			step, progress = 2.25, 0
+		case cdSlowSin:
+			step, progress = 0.20, 140
+		case cdMedSin:
+			step, progress = 0.25, 175
+		case cdFastSin:
+			step, progress = 0.30, 210
+		case cdSlowDist:
+			step, progress = 0.12, 175
+		case cdMedDist:
+			step, progress = 0.16, 210
+		case cdFastDist:
+			step, progress = 0.20, 245
+		case cdSplitted:
+			step, progress = 0.18, 0
+		case bgSin1:
+			step, progress = 0.50, 0
+		case bgSin2:
+			step, progress = 0.80, 0
+		case bgSin3:
+			step, progress = 0.50, 0
+		}
+
+		// Apply distortion rate from config
+		step *= g.config.DistortionRate
+
+		local := []float64{}
+		decal := 0.0
+		previous := 0
+		maxAngle := 360.0
+		if funcType == cdSplitted {
+			maxAngle = 720.0
+		}
+
+		for i := 0.0; i < maxAngle-step; i += step {
+			val := 0.0
+			rad := i * math.Pi / 180
+
+			switch funcType {
+			case cdZero:
+				val = 0
+			case cdSlowSin:
+				val = 100 * math.Sin(rad)
+			case cdMedSin:
+				val = 110 * math.Sin(rad)
+			case cdFastSin:
+				val = 120 * math.Sin(rad)
+			case cdSlowDist:
+				val = 100*math.Sin(rad) + 25.0*math.Sin(rad*10)
+			case cdMedDist:
+				val = 110*math.Sin(rad) + 27.5*math.Sin(rad*9)
+			case cdFastDist:
+				val = 120*math.Sin(rad) + 30.0*math.Sin(rad*8)
+			case cdSplitted:
+				dir := 1.0
+				if len(local)%2 == 1 {
+					dir = -1.0
+				}
+				amp := 12.0
+				if i < 160 {
+					amp *= i / 160
+				} else if (720 - 160) < i {
+					amp *= (720 - i) / 160
+				}
+				val = 90*math.Sin(rad) + dir*amp*math.Sin(rad*3)
+			case bgSin1:
+				val = -60 * math.Sin(rad)
+			case bgSin2:
+				val = -60 * math.Sin(rad)
+			case bgSin3:
+				val = -60*math.Sin(rad) - 15*math.Sin(rad*4)
+			}
+			local = append(local, val)
+		}
+
+		g.curves[funcType] = make([]int, len(local))
+		for i := 0; i < len(local); i++ {
+			nitem := -int(math.Floor(local[i] - decal))
+			g.curves[funcType][i] = nitem - previous
+			previous = nitem
+			decal += progress / float64(len(local))
+		}
+	}
+}
+
+// precalcPosition precalculates text positions
+func (g *Game) precalcPosition() {
+	count := 0
+	g.position = []int{}
+
+	for _, r := range g.text {
+		if letter, ok := g.letterData[r]; ok {
+			count += letter.width
+			g.position = append(g.position, count)
+		}
+	}
+}
+
+// precalcWave precalculates wave data
+func (g *Game) precalcWave(srcWaveTable []int, dstWaveTable *[]int) {
+	count := 0
+	*dstWaveTable = []int{}
+
+	for _, waveType := range srcWaveTable {
+		wave := g.curves[waveType]
+		for _, val := range wave {
+			count += val
+			*dstWaveTable = append(*dstWaveTable, count)
+		}
+	}
+}
+
+// getSum calculates sum with wrapping
+func (g *Game) getSum(arr []int, index, decal int) int {
+	n := len(arr)
+	if n == 0 {
+		return decal
+	}
+
+	maxVal := arr[n-1]
+	f := index / n
+	m := index % n
+	return decal + f*maxVal + arr[m]
+}
+
+// getWave gets wave value at position
+func (g *Game) getWave(i int, introWave, mainWave []int) int {
+	if i < len(introWave) {
+		return g.getSum(introWave, i, 0)
+	}
+	return g.getSum(mainWave, i-len(introWave), introWave[len(introWave)-1])
+}
+
+// getPosition gets text position
+func (g *Game) getPosition(i int) int {
+	if i > 0 && i <= len(g.position) {
+		return g.getSum(g.position, i-1, 0)
+	}
+	return 0
+}
+
+// getLetter gets letter at position
+func (g *Game) getLetter(str string, pos int) rune {
+	runes := []rune(str)
+	if len(runes) == 0 {
+		return ' '
+	}
+	return runes[pos%len(runes)]
+}
+
+// displayText renders text to scroll surface
+func (g *Game) displayText(letterOffset int) {
+	// Clear to transparent, not black - we want to see the background through
+	g.surfScroll.Clear()
+
+	xPos := 0
+	i := 0
+	for xPos < g.surfScroll.Bounds().Dx() {
+		char := g.getLetter(g.text, i+letterOffset)
+		if letter, ok := g.letterData[char]; ok {
+			srcRect := image.Rect(letter.x, letter.y, letter.x+letter.width, letter.y+fontHeight)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(xPos), 0)
+			g.surfScroll.DrawImage(g.fontImg.SubImage(srcRect).(*ebiten.Image), op)
+			xPos += letter.width
+		}
+		i++
+	}
+}
+
+// updateSprites updates sprite positions
+func (g *Game) updateSprites() {
+	for i := 0; i < len(g.sprites); i++ {
+		c := g.ctrSprite + float64(i)*0.155
+
+		centerX := float64(screenWidth) / 2
+		centerY := float64(screenHeight) / 2
+
+		posX := centerX + 100*math.Sin(c*1.35+1.25) + 100*math.Sin(c*1.86+0.54)
+		posY := centerY + 60*math.Cos(c*1.72+0.23) + 60*math.Cos(c*1.63+0.98)
+
+		posX += 20 * math.Sin(float64(i)*0.289+1.15)
+		posY += 20 * math.Cos(float64(i)*0.456+0.85)
+
+		halfSize := float64(spriteSize) / 2
+		if posX < halfSize {
+			posX = halfSize
+		} else if posX > screenWidth-halfSize {
+			posX = screenWidth - halfSize
+		}
+
+		if posY < halfSize {
+			posY = halfSize
+		} else if posY > screenHeight-halfSize {
+			posY = screenHeight - halfSize
+		}
+
+		g.sprites[i].x = posX
+		g.sprites[i].y = posY
+	}
+}
+
+// drawGlowSprite draws a sprite with glow effect
+func (g *Game) drawGlowSprite(screen *ebiten.Image, sprite *Sprite) {
+	if g.config.EnableGlow {
+		// Draw glow layers
+		for i := 3; i > 0; i-- {
+			op := &ebiten.DrawImageOptions{}
+			scale := zoom + float64(i)*0.1
+			op.GeoM.Translate(-float64(spriteSize)/2, -float64(spriteSize)/2)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
+			op.ColorM.Scale(1, 1, 1, 0.3/float64(i))
+			op.Filter = ebiten.FilterLinear
+			screen.DrawImage(g.logoImg, op)
+		}
+	}
+
+	// Draw main sprite
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-float64(spriteSize)/2, -float64(spriteSize)/2)
+	op.GeoM.Scale(zoom, zoom)
+	op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
+	screen.DrawImage(g.logoImg, op)
+}
+
+// animIntro handles intro animation
+func (g *Game) animIntro() {
+	if g.introX < 0 {
+		if g.introTile > -1 {
+			char := g.getLetter(g.introText, g.introTile)
+			if letter, ok := g.letterData[char]; ok {
+				g.introX += letter.width
+			}
+		}
+		g.introLetter++
+		if g.introLetter >= len([]rune(g.introText)) {
+			g.lastState = g.state
+			g.state = "splash"
+			g.iteration = 0
+			g.transitionProgress = 0
+			return
+		}
+		g.introTile = g.introLetter
+	}
+	g.introX -= g.introSpeed
+
+	// Scroll temp canvas
+	g.surfScroll2.Clear()
+	srcRect := image.Rect(g.introSpeed, 0, screenWidth+48, fontHeight)
+	op := &ebiten.DrawImageOptions{}
+	g.surfScroll2.DrawImage(g.surfScroll1.SubImage(srcRect).(*ebiten.Image), op)
+
+	g.surfScroll1.Clear()
+	g.surfScroll1.DrawImage(g.surfScroll2, op)
+
+	// Draw letter
+	char := g.getLetter(g.introText, g.introTile)
+	if letter, ok := g.letterData[char]; ok {
+		srcRect := image.Rect(letter.x, letter.y, letter.x+letter.width, letter.y+36)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(screenWidth+g.introX), 0)
+		g.surfScroll1.DrawImage(g.fontImg.SubImage(srcRect).(*ebiten.Image), op)
+	}
+
+	// Draw to main surface
+	g.surfMain.Fill(color.Black)
+	op = &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(0, 170)
+	g.surfMain.DrawImage(g.surfScroll1, op)
+}
+
+// animSplash handles splash screen
+func (g *Game) animSplash() {
+	if g.iteration < 90 {
+		g.iteration++
+		g.transitionProgress = float64(g.iteration) / 90.0
+	} else {
+		g.lastState = g.state
+		g.state = "demo"
+		g.iteration = 0
+		g.transitionProgress = 0
+	}
+
+	g.surfMain.Fill(color.Black)
+}
+
+// animDemo handles main demo animation
+func (g *Game) animDemo() {
+	// Direct calculation without cache for smoother animation
+	g.calculateAndRenderDemo()
+
+	// Update counters with fixed increment for smooth animation
+	g.iteration++
+	g.backWavePos = g.iteration * 5
+	g.frontWavePos = g.iteration * 10
+	g.ctrSprite += 0.02
+}
+
+// calculateAndRenderDemo calculates and renders a demo frame
+func (g *Game) calculateAndRenderDemo() {
+	// Bounce values - smoother calculation
+	bounceBack := int(math.Floor(30.0 * math.Abs(math.Sin(float64(g.iteration)*0.1))))
+	bounceFront := int(math.Floor(18.0 * math.Abs(math.Sin(float64(g.iteration)*0.1))))
+
+	// Calculate decal_x
+	decalX := 999999999
+	for ligne := 0; ligne < screenHeight; ligne++ {
+		c := g.getWave(g.frontWavePos+ligne, g.frontIntroWave, g.frontMainWave)
+		if c < decalX {
+			decalX = c
+		}
+	}
+
+	if decalX < 0 {
+		decalX = 0
+	}
+
+	// Calculate first letter
+	i := 0
+	dir := 0
+	if decalX > g.letterDecal {
+		dir = 1
+	} else if decalX < g.letterDecal {
+		dir = -1
+	}
+
+	for decalX < g.getPosition(g.letterNum+i) || g.getPosition(g.letterNum+i+1) <= decalX {
+		i += dir
+		if g.letterNum+i < 0 || g.letterNum+i >= len(g.position) {
+			break
+		}
+	}
+	g.letterNum += i
+	if g.letterNum < 0 {
+		g.letterNum = 0
+	} else if g.letterNum >= len(g.position) {
+		g.letterNum = len(g.position) - 1
+	}
+	g.letterDecal = g.getPosition(g.letterNum)
+
+	// Display text
+	g.displayText(g.letterNum)
+
+	// Render to main surface
+	g.surfMain.Clear()
+
+	// Draw line by line for proper layering
+	for ligne := 0; ligne < screenHeight; ligne++ {
+		// Background
+		backWave := g.getWave(g.backWavePos+ligne, g.backIntroWave, g.backMainWave)
+		backX := (80 + backWave/2) % g.backImg.Bounds().Dx()
+
+		// Ensure we have enough width for the distortion
+		srcWidth := screenWidth
+		if backX+srcWidth > g.surfBack.Bounds().Dx() {
+			// Wrap around if needed
+			backX = backX % g.surfBack.Bounds().Dx()
+		}
+
+		// Draw background line using DrawImage
+		srcRect := image.Rect(backX, (ligne+bounceBack)%backHeight, backX+srcWidth, ((ligne+bounceBack)%backHeight)+1)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(0, float64(ligne))
+		g.surfMain.DrawImage(g.surfBack.SubImage(srcRect).(*ebiten.Image), op)
+
+		// Text scroll
+		frontWave := g.getWave(g.frontWavePos+ligne, g.frontIntroWave, g.frontMainWave)
+		scrollX := frontWave - g.letterDecal
+
+		if scrollX >= 0 && scrollX < g.surfScroll.Bounds().Dx()-screenWidth {
+			srcRect := image.Rect(scrollX, (ligne+bounceFront)%fontHeight, scrollX+screenWidth, ((ligne+bounceFront)%fontHeight)+1)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(0, float64(ligne))
+			g.surfMain.DrawImage(g.surfScroll.SubImage(srcRect).(*ebiten.Image), op)
+		}
+	}
+}
+
+// Delete renderDemoFrame as it's no longer needed
+
+// drawTransition draws transition effects between states
+func (g *Game) drawTransition(screen *ebiten.Image, progress float64) {
+	if progress > 0 && progress < 1 {
+		overlay := ebiten.NewImage(screenWidth*zoom, screenHeight*zoom)
+
+		// Fade effect
+		alpha := uint8(255 * (1 - progress))
+		overlay.Fill(color.RGBA{0, 0, 0, alpha})
+
+		// Optional: Add more complex transition effects
+		if g.lastState == "splash" && g.state == "demo" {
+			// Zoom in effect
+			op := &ebiten.DrawImageOptions{}
+			scale := 1.0 + (1.0-progress)*0.2
+			op.GeoM.Translate(-float64(screenWidth*zoom)/2, -float64(screenHeight*zoom)/2)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(float64(screenWidth*zoom)/2, float64(screenHeight*zoom)/2)
+			screen.DrawImage(overlay, op)
+		} else {
+			screen.DrawImage(overlay, nil)
+		}
+	}
+}
+
+// Update updates the game state
+func (g *Game) Update() error {
+	// Handle fullscreen toggle
+	if ebiten.IsKeyPressed(ebiten.KeyF11) {
+		ebiten.SetFullscreen(!ebiten.IsFullscreen())
+	}
+
+	// Handle volume control
+	if g.audioPlayer != nil {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+			vol := g.audioPlayer.Volume() + 0.01
+			if vol > 1.0 {
+				vol = 1.0
+			}
+			g.audioPlayer.SetVolume(vol)
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyDown) {
+			vol := g.audioPlayer.Volume() - 0.01
+			if vol < 0 {
+				vol = 0
+			}
+			g.audioPlayer.SetVolume(vol)
+		}
+	}
+
+	// Update based on state
+	switch g.state {
+	case "intro":
+		g.animIntro()
+	case "splash":
+		g.animSplash()
+	case "demo":
+		g.animDemo()
+	}
+
+	// Update transition
+	if g.transitionProgress > 0 && g.transitionProgress < 1 {
+		g.transitionProgress += 0.02
+		if g.transitionProgress > 1 {
+			g.transitionProgress = 1
+		}
+	}
+
+	return nil
+}
+
+// Draw draws the game
+func (g *Game) Draw(screen *ebiten.Image) {
+	// Apply CRT shader only in intro state
+	if g.config.EnableCRT && g.crtShader != nil && g.state == "intro" {
+		// Create a temporary image at the target size for the shader
+		tmpImg := ebiten.NewImage(screenWidth*zoom, screenHeight*zoom)
+
+		// Draw main surface scaled to the temporary image
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(zoom, zoom)
+		tmpImg.DrawImage(g.surfMain, op)
+
+		// Apply CRT shader
+		shaderOp := &ebiten.DrawRectShaderOptions{}
+		shaderOp.Images[0] = tmpImg
+		screen.DrawRectShader(screenWidth*zoom, screenHeight*zoom, g.crtShader, shaderOp)
+	} else {
+		// Draw main surface with zoom (no shader)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(zoom, zoom)
+		screen.DrawImage(g.surfMain, op)
+	}
+
+	// Draw sprites (always without shader)
+	if g.state == "demo" {
+		g.updateSprites()
+		for _, sprite := range g.sprites {
+			g.drawGlowSprite(screen, sprite)
+		}
+	}
+
+	// Draw transition
+	g.drawTransition(screen, g.transitionProgress)
+
+	// Draw debug info (optional)
+	if ebiten.IsKeyPressed(ebiten.KeyTab) {
+		ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %0.2f\nTPS: %0.2f\nSprites: %d\nState: %s\nCRT: %v",
+			ebiten.CurrentFPS(),
+			ebiten.CurrentTPS(),
+			len(g.sprites),
+			g.state,
+			g.config.EnableCRT && g.state == "intro"))
+	}
+}
+
+// Layout returns the screen dimensions
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth * zoom, screenHeight * zoom
 }
 
-func (g *Game) CloseAudio() {
-	if g.player != nil {
-		g.player.Close()
-	}
-}
-
 func main() {
-	// Initialize audio context
-	audioContext := audio.NewContext(44100)
-
-	// Load MP3 file
-	f, err := os.Open("music.mp3")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	// Decode MP3
-	mp3Stream, err := mp3.DecodeWithSampleRate(44100, f)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create a looping player
-	player, err := audioContext.NewPlayer(audio.NewInfiniteLoop(mp3Stream, mp3Stream.Length()))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create game instance
-	game := &Game{
-		audioContext: audioContext,
-		player:       player,
-	}
-
-	// Start playing the music
-	player.Play()
-
-	// Load images
-	f, err = os.Open("back3.png")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	back, err := png.Decode(f)
-	if err != nil {
-		log.Fatal(err)
-	}
-	backImg = ebiten.NewImageFromImage(back)
-
-	f, err = os.Open("font.png")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	font, err := png.Decode(f)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fontImg = ebiten.NewImageFromImage(font)
-
-	// Charger logo.png
-	f, err = os.Open("logo.png")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	logo, err := png.Decode(f)
-	if err != nil {
-		log.Fatal(err)
-	}
-	logoImg = ebiten.NewImageFromImage(logo)
-	if debug {
-		log.Printf("logoImg loaded, size: %v", logoImg.Bounds().Size())
-	}
-
-	// Initialize canvases
-	mainCanvas = ebiten.NewImage(screenWidth, screenHeight)
-	if debug {
-		log.Printf("mainCanvas initialized, size: %v", mainCanvas.Bounds().Size())
-	}
-	backCanvas = ebiten.NewImage(screenWidth+8, backHeight)
-	if debug {
-		log.Printf("backCanvas initialized, size: %v", backCanvas.Bounds().Size())
-	}
-	scrollCanvas = ebiten.NewImage(screenWidth*16/10, fontHeight)
-	if debug {
-		log.Printf("scrollCanvas initialized, size: %v", scrollCanvas.Bounds().Size())
-	}
-
-	// Initialize back canvas
-	for i := 0; i < backCanvas.Bounds().Dx(); i += 8 {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(i), 0)
-		backCanvas.DrawImage(backImg, op)
-	}
-	if debug {
-		log.Printf("backCanvas filled, size: %v", backCanvas.Bounds().Size())
-	}
-
-	// Precompute curves
-	createCurve(cdZero, 2.25, 0)
-	createCurve(cdSlowSin, 0.20, 140)
-	createCurve(cdMedSin, 0.25, 175)
-	createCurve(cdFastSin, 0.30, 210)
-	createCurve(cdSlowDist, 0.12, 175)
-	createCurve(cdMedDist, 0.16, 210)
-	createCurve(cdFastDist, 0.20, 245)
-	createCurve(cdSplitted, 0.18, 0)
-	createCurve(bgSin1, 0.50, 0)
-	createCurve(bgSin2, 0.80, 0)
-	createCurve(bgSin3, 0.50, 0)
-
-	// Precompute positions and waves
-	doPrecalcPosition()
-	doPrecalcWave(frontIntroWaveTable, &frontIntroWave)
-	doPrecalcWave(frontMainWaveTable, &frontMainWave)
-	doPrecalcWave(backIntroWaveTable, &backIntroWave)
-	doPrecalcWave(backMainWaveTable, &backMainWave)
-
-	// Initialize start time
-	startTime = time.Now()
-
-	// Set up Ebiten
+	// Set window properties
 	ebiten.SetWindowSize(screenWidth*zoom, screenHeight*zoom)
 	ebiten.SetWindowTitle("DMA IS BACK IN 2025 - GOLANG/EBITEN POWER :)")
+	ebiten.SetWindowResizable(true)
+
+	// Create and initialize game
+	game := NewGame()
+	if err := game.Init(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Run game
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
-
-	// Ensure audio is stopped when the program exits
-	defer game.CloseAudio()
 }
+
+// --- Additional files ---
+
+// go.mod
+/*
+module megadist
+
+go 1.24.3
+
+require github.com/hajimehoshi/ebiten/v2 v2.8.8
+
+require (
+	github.com/ebitengine/gomobile v0.0.0-20240911145611-4856209ac325 // indirect
+	github.com/ebitengine/hideconsole v1.0.0 // indirect
+	github.com/ebitengine/oto/v3 v3.3.3 // indirect
+	github.com/ebitengine/purego v0.8.0 // indirect
+	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
+	github.com/jezek/xgb v1.1.1 // indirect
+	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
+)
+*/
+
+// config.json (example)
+/*
+{
+    "fullscreen": false,
+    "vsync": true,
+    "musicVolume": 0.7,
+    "spriteCount": 10,
+    "distortionRate": 1.0,
+    "enableCRT": true,
+    "enableGlow": true
+}
+*/
+
+// build.sh
+/*
+#!/bin/bash
+
+# Build script for MegaDist
+
+echo "Building MegaDist..."
+
+# Build for current platform
+go build -ldflags="-s -w" -o megadist
+
+# Cross-compile for other platforms
+echo "Cross-compiling..."
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o megadist-windows.exe
+GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o megadist-macos
+GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o megadist-linux
+
+echo "Build complete!"
+*/
+
+// README.md
+/*
+# MegaDist - Parallax Distorter
+
+A Go/Ebiten port of the classic Atari ST demo "ParaDis3" by Dyno.
+
+## Features
+
+- Faithful recreation of the original parallax distortion effects
+- Sinusoidal text scrolling with multiple wave patterns
+- Background parallax scrolling
+- Animated logo sprites with complex trajectories
+- Optional CRT shader effect
+- Glow effects on sprites
+- Configurable settings via config.json
+
+## Requirements
+
+- Go 1.21 or higher
+- Ebiten v2.6.0 or higher
+
+## Building
+
+```bash
+go mod init megadist
+go mod tidy
+go build -o megadist
+```
+
+## Running
+
+```bash
+./megadist
+```
+
+## Controls
+
+- F11: Toggle fullscreen
+- Up/Down arrows: Adjust volume
+- Tab: Show debug information
+
+## Configuration
+
+Edit `config.json` to customize:
+- Screen mode (fullscreen/windowed)
+- VSync
+- Music volume
+- Number of sprites
+- Distortion rate
+- Visual effects (CRT, glow)
+
+## Assets Required
+
+Place in `assets/` directory:
+- back.png: Background tile (8x64 pixels)
+- font.png: Bitmap font (480x216 pixels)
+- logo.png: Sprite image (32x32 pixels)
+- music.mp3: Background music
+
+*/
