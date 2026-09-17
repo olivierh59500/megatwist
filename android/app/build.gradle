@@ -1,0 +1,41 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.olivierh.megatwist"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.olivierh.megatwist"
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // Both are deliberate for the validated Pixel build: the toolchain is
+        // pinned and the debug APK targets the connected arm64 device only.
+        disable "AndroidGradlePluginVersion", "ChromeOsAbiSupport"
+    }
+}
+
+dependencies {
+    implementation files("libs/megatwist.aar")
+}

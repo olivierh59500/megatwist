@@ -1,0 +1,29 @@
+# Go build and test products
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+*.coverprofile
+/megatwist
+
+# Local Go workspace and environment
+go.work
+go.work.sum
+.env
+
+# Editors and macOS
+.DS_Store
+.idea/
+.vscode/
+
+# Android generated and machine-local files
+android/.gradle/
+android/build/
+android/app/build/
+android/app/libs/*.aar
+android/app/libs/*-sources.jar
+android/local.properties
