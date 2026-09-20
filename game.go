@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
 	"log"
@@ -85,9 +87,11 @@ type Sprite struct {
 
 // Game contains the shared desktop and Android game state.
 type Game struct {
-	backImg *ebiten.Image
-	fontImg *ebiten.Image
-	logoImg *ebiten.Image
+	scrollRenderer              *scrolling.Scrolling
+	backgroundBatch, frontBatch *composite.QuadBatch
+	backImg                     *ebiten.Image
+	fontImg                     *ebiten.Image
+	logoImg                     *ebiten.Image
 
 	surfMain    *ebiten.Image
 	surfScroll  *ebiten.Image
