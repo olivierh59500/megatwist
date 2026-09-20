@@ -1,10 +1,14 @@
 // Package megatwist implements the MegaTwist Atari ST demo remake.
 package megatwist
 
+import originalassets "megatwist"
+
 import (
 	"bytes"
-	"embed"
+
 	"fmt"
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
 	"log"
@@ -48,9 +52,7 @@ const (
 
 // Only runtime assets are embedded. The legacy 15 MB MP3 remains in the
 // repository but is deliberately excluded from desktop binaries and APKs.
-//
-//go:embed assets/back.png assets/font.png assets/logo.png
-var assets embed.FS
+var assets = originalassets.DCKAssetAssets()
 
 type gameState uint8
 
@@ -85,9 +87,11 @@ type Sprite struct {
 
 // Game contains the shared desktop and Android game state.
 type Game struct {
-	backImg *ebiten.Image
-	fontImg *ebiten.Image
-	logoImg *ebiten.Image
+	scrollRenderer              *scrolling.Scrolling
+	backgroundBatch, frontBatch *composite.QuadBatch
+	backImg                     *ebiten.Image
+	fontImg                     *ebiten.Image
+	logoImg                     *ebiten.Image
 
 	surfMain    *ebiten.Image
 	surfScroll  *ebiten.Image

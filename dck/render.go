@@ -1,6 +1,9 @@
 package megatwist
 
 import (
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/scrolling"
+	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,17 +16,23 @@ func (g *Game) displayText(letterOffset int) {
 	}
 	g.displayedLetter = letterOffset
 	g.surfScroll.Clear()
-	x := 0
-	for index := 0; x < g.surfScroll.Bounds().Dx(); index++ {
-		letter, ok := g.letterData[getLetter(g.text, index+letterOffset)]
-		if !ok {
-			letter = g.letterData[' ']
+	if g.scrollRenderer == nil {
+		glyphs := make([]scrolling.Glyph, len(g.text))
+		for i, r := range g.text {
+			letter, ok := g.letterData[r]
+			if !ok {
+				letter = g.letterData[' ']
+			}
+			glyphs[i] = scrolling.Glyph{Image: letter.glyph, Advance: float64(letter.width)}
 		}
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(x), 0)
-		g.surfScroll.DrawImage(letter.glyph, op)
-		x += letter.width
+		var err error
+		g.scrollRenderer, err = scrolling.New(scrolling.Config{Glyphs: glyphs})
+		if err != nil {
+			panic(err)
+		}
 	}
+	state := g.scrollRenderer.Window(letterOffset, float64(g.surfScroll.Bounds().Dx()))
+	g.scrollRenderer.DrawAt(g.surfScroll, state)
 }
 
 func appendScanline(
@@ -58,42 +67,32 @@ func positiveMod(value, modulus int) int {
 }
 
 func (g *Game) renderDistortion(bounceBack, bounceFront int) {
-	g.backgroundVertices = g.backgroundVertices[:0]
-	g.backgroundIndices = g.backgroundIndices[:0]
-	g.scrollVertices = g.scrollVertices[:0]
-	g.scrollIndices = g.scrollIndices[:0]
-
-	backgroundPeriod := g.backImg.Bounds().Dx()
-	maxScrollX := g.surfScroll.Bounds().Dx() - screenWidth
+	if g.backgroundBatch == nil {
+		g.backgroundBatch = composite.NewQuadBatch(screenHeight)
+		g.frontBatch = composite.NewQuadBatch(screenHeight)
+		g.backgroundBatch.AlternateDiagonal = true
+		g.frontBatch.AlternateDiagonal = true
+	}
+	g.surfMain.Clear()
+	g.backgroundBatch.Begin(g.surfMain, g.surfBack)
 	for line := 0; line < screenHeight; line++ {
-		backWave := getWave(g.backWavePos+line, g.backIntroWave, g.backMainWave)
-		backX := positiveMod(80+backWave/2, backgroundPeriod)
-		backY := (line + bounceBack) % backHeight
-		g.backgroundVertices, g.backgroundIndices = appendScanline(
-			g.backgroundVertices,
-			g.backgroundIndices,
-			line,
-			backX,
-			backY,
-		)
-
-		frontWave := getWave(g.frontWavePos+line, g.frontIntroWave, g.frontMainWave)
-		scrollX := frontWave - g.letterDecal
-		if scrollX >= 0 && scrollX < maxScrollX {
-			scrollY := (line + bounceFront) % fontHeight
-			g.scrollVertices, g.scrollIndices = appendScanline(
-				g.scrollVertices,
-				g.scrollIndices,
-				line,
-				scrollX,
-				scrollY,
-			)
+		wave := getWave(g.backWavePos+line, g.backIntroWave, g.backMainWave)
+		x := positiveMod(80+wave/2, g.backImg.Bounds().Dx())
+		y := (line + bounceBack) % backHeight
+		g.backgroundBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
+	}
+	g.backgroundBatch.Flush()
+	g.frontBatch.Begin(g.surfMain, g.surfScroll)
+	maxX := g.surfScroll.Bounds().Dx() - screenWidth
+	for line := 0; line < screenHeight; line++ {
+		wave := getWave(g.frontWavePos+line, g.frontIntroWave, g.frontMainWave)
+		x := wave - g.letterDecal
+		if x >= 0 && x < maxX {
+			y := (line + bounceFront) % fontHeight
+			g.frontBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
 		}
 	}
-
-	g.surfMain.Clear()
-	g.surfMain.DrawTriangles(g.backgroundVertices, g.backgroundIndices, g.surfBack, nil)
-	g.surfMain.DrawTriangles(g.scrollVertices, g.scrollIndices, g.surfScroll, nil)
+	g.frontBatch.Flush()
 }
 
 func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {
@@ -106,7 +105,7 @@ func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {
 			op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
 			op.ColorScale.ScaleAlpha(float32(0.3 / float64(layer)))
 			op.Filter = ebiten.FilterLinear
-			target.DrawImage(g.logoImg, op)
+			composite.Instance{Image: g.logoImg, Options: *op}.Draw(target)
 		}
 	}
 
@@ -114,7 +113,7 @@ func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {
 	op.GeoM.Translate(-float64(spriteSize)/2, -float64(spriteSize)/2)
 	op.GeoM.Scale(zoom, zoom)
 	op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
-	target.DrawImage(g.logoImg, op)
+	composite.Instance{Image: g.logoImg, Options: *op}.Draw(target)
 }
 
 func (g *Game) drawTransition(target *ebiten.Image) {
