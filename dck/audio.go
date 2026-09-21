@@ -8,7 +8,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/hajimehoshi/ebiten/v2/audio"
+	audio "github.com/olivierh59500/democonstructionkit/sound/output"
 	"github.com/olivierh59500/ym-player/pkg/stsound"
 )
 
