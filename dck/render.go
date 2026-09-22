@@ -74,9 +74,10 @@ func (g *Game) renderDistortion(bounceBack, bounceFront int) {
 		g.frontBatch.AlternateDiagonal = true
 	}
 	g.surfMain.Clear()
+	g.backProgram.Fill(g.backRows[:], g.backWavePos)
 	g.backgroundBatch.Begin(g.surfMain, g.surfBack)
 	for line := 0; line < screenHeight; line++ {
-		wave := getWave(g.backWavePos+line, g.backIntroWave, g.backMainWave)
+		wave := g.backRows[line]
 		x := positiveMod(80+wave/2, g.backImg.Bounds().Dx())
 		y := (line + bounceBack) % backHeight
 		g.backgroundBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
@@ -85,7 +86,7 @@ func (g *Game) renderDistortion(bounceBack, bounceFront int) {
 	g.frontBatch.Begin(g.surfMain, g.surfScroll)
 	maxX := g.surfScroll.Bounds().Dx() - screenWidth
 	for line := 0; line < screenHeight; line++ {
-		wave := getWave(g.frontWavePos+line, g.frontIntroWave, g.frontMainWave)
+		wave := g.frontRows[line]
 		x := wave - g.letterDecal
 		if x >= 0 && x < maxX {
 			y := (line + bounceFront) % fontHeight

@@ -1,6 +1,8 @@
 package megatwist
 
 import (
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/presets"
 	"image/color"
 	"math"
 
@@ -8,105 +10,19 @@ import (
 )
 
 func createCurves(distortionRate float64) [][]int {
-	curves := make([][]int, bgSin3+1)
-	for curveType := cdZero; curveType <= bgSin3; curveType++ {
-		var step, progress float64
-		switch curveType {
-		case cdZero:
-			step = 2.25
-		case cdSlowSin:
-			step, progress = 0.20, 140
-		case cdMedSin:
-			step, progress = 0.25, 175
-		case cdFastSin:
-			step, progress = 0.30, 210
-		case cdSlowDist:
-			step, progress = 0.12, 175
-		case cdMedDist:
-			step, progress = 0.16, 210
-		case cdFastDist:
-			step, progress = 0.20, 245
-		case cdSplitted:
-			step = 0.18
-		case bgSin1:
-			step = 0.50
-		case bgSin2:
-			step = 0.80
-		case bgSin3:
-			step = 0.50
-		}
-		step *= distortionRate
-
-		maxAngle := 360.0
-		if curveType == cdSplitted {
-			maxAngle = 720
-		}
-		values := make([]float64, 0, int(maxAngle/step)+1)
-		for angle := 0.0; angle < maxAngle-step; angle += step {
-			radians := angle * math.Pi / 180
-			var value float64
-			switch curveType {
-			case cdZero:
-			case cdSlowSin:
-				value = 100 * math.Sin(radians)
-			case cdMedSin:
-				value = 110 * math.Sin(radians)
-			case cdFastSin:
-				value = 120 * math.Sin(radians)
-			case cdSlowDist:
-				value = 100*math.Sin(radians) + 25*math.Sin(radians*10)
-			case cdMedDist:
-				value = 110*math.Sin(radians) + 27.5*math.Sin(radians*9)
-			case cdFastDist:
-				value = 120*math.Sin(radians) + 30*math.Sin(radians*8)
-			case cdSplitted:
-				direction := 1.0
-				if len(values)%2 == 1 {
-					direction = -1
-				}
-				amplitude := 12.0
-				if angle < 160 {
-					amplitude *= angle / 160
-				} else if angle > 560 {
-					amplitude *= (720 - angle) / 160
-				}
-				value = 90*math.Sin(radians) + direction*amplitude*math.Sin(radians*3)
-			case bgSin1, bgSin2:
-				value = -60 * math.Sin(radians)
-			case bgSin3:
-				value = -60*math.Sin(radians) - 15*math.Sin(radians*4)
-			}
-			values = append(values, value)
-		}
-
-		curve := make([]int, len(values))
-		decal := 0.0
-		previous := 0
-		for i, value := range values {
-			item := -int(math.Floor(value - decal))
-			curve[i] = item - previous
-			previous = item
-			decal += progress / float64(len(values))
-		}
-		curves[curveType] = curve
+	curves, err := presets.RibbonCurves(distortionRate)
+	if err != nil {
+		panic(err)
 	}
 	return curves
 }
 
 func precalcWave(curves [][]int, waveTypes []int) []int {
-	capacity := 0
-	for _, waveType := range waveTypes {
-		capacity += len(curves[waveType])
+	values, err := composite.JoinDeltaCurves(curves, waveTypes)
+	if err != nil {
+		panic(err)
 	}
-	waveValues := make([]int, 0, capacity)
-	value := 0
-	for _, waveType := range waveTypes {
-		for _, delta := range curves[waveType] {
-			value += delta
-			waveValues = append(waveValues, value)
-		}
-	}
-	return waveValues
+	return values
 }
 
 func (g *Game) precalcPosition() {
@@ -121,18 +37,7 @@ func (g *Game) precalcPosition() {
 }
 
 func getSum(values []int, index, decal int) int {
-	if len(values) == 0 {
-		return decal
-	}
-	cycles, offset := index/len(values), index%len(values)
-	return decal + cycles*values[len(values)-1] + values[offset]
-}
-
-func getWave(index int, introWave, mainWave []int) int {
-	if index < len(introWave) {
-		return getSum(introWave, index, 0)
-	}
-	return getSum(mainWave, index-len(introWave), introWave[len(introWave)-1])
+	return composite.CumulativeAt(values, index, decal)
 }
 
 func (g *Game) getPosition(index int) int {
@@ -231,9 +136,10 @@ func (g *Game) calculateAndRenderDemo() {
 	bounceBack := int(30 * math.Abs(math.Sin(float64(g.iteration)*0.1)))
 	bounceFront := int(18 * math.Abs(math.Sin(float64(g.iteration)*0.1)))
 
+	g.frontProgram.Fill(g.frontRows[:], g.frontWavePos)
 	decalX := math.MaxInt
 	for line := 0; line < screenHeight; line++ {
-		decalX = min(decalX, getWave(g.frontWavePos+line, g.frontIntroWave, g.frontMainWave))
+		decalX = min(decalX, g.frontRows[line])
 	}
 	decalX = max(decalX, 0)
 

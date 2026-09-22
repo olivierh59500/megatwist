@@ -122,11 +122,9 @@ type Game struct {
 	sprites   []Sprite
 	ctrSprite float64
 
-	backIntroWave  []int
-	backMainWave   []int
-	frontIntroWave []int
-	frontMainWave  []int
-	position       []int
+	frontProgram, backProgram *composite.DisplacementProgram
+	frontRows, backRows       [screenHeight]int
+	position                  []int
 
 	backgroundVertices []ebiten.Vertex
 	backgroundIndices  []uint16
@@ -257,24 +255,33 @@ func (g *Game) initialize() error {
 
 	g.initFontData()
 	curves := createCurves(g.config.DistortionRate)
-	g.frontIntroWave = precalcWave(curves, []int{
+	frontIntroWave := precalcWave(curves, []int{
 		cdZero, cdZero, cdZero, cdZero, cdZero,
 		cdZero, cdZero, cdZero, cdZero, cdZero,
 		cdFastSin, cdMedSin, cdSlowSin, cdSplitted,
 	})
-	g.frontMainWave = precalcWave(curves, []int{
+	frontMainWave := precalcWave(curves, []int{
 		cdSlowSin, cdSlowSin, cdSlowDist, cdSlowSin,
 		cdSlowSin, cdMedSin, cdFastSin, cdMedSin,
 		cdSlowSin, cdMedDist, cdMedSin, cdSlowSin,
 		cdSplitted,
 	})
-	g.backIntroWave = precalcWave(curves, []int{cdZero, cdZero, cdZero, cdZero, cdZero})
-	g.backMainWave = precalcWave(curves, []int{
+	backIntroWave := precalcWave(curves, []int{cdZero, cdZero, cdZero, cdZero, cdZero})
+	backMainWave := precalcWave(curves, []int{
 		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
 		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
 		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
 		cdSplitted,
 	})
+
+	g.frontProgram, err = composite.NewDisplacementProgram(frontIntroWave, frontMainWave)
+	if err != nil {
+		return err
+	}
+	g.backProgram, err = composite.NewDisplacementProgram(backIntroWave, backMainWave)
+	if err != nil {
+		return err
+	}
 	g.precalcPosition()
 
 	for x := 0; x < g.surfBack.Bounds().Dx(); x += g.backImg.Bounds().Dx() {
