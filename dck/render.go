@@ -2,61 +2,12 @@ package megatwist
 
 import (
 	"github.com/olivierh59500/democonstructionkit/composite"
-	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
-
-func (g *Game) displayText(letterOffset int) {
-	if letterOffset == g.displayedLetter {
-		return
-	}
-	g.displayedLetter = letterOffset
-	g.surfScroll.Clear()
-	if g.scrollRenderer == nil {
-		glyphs := make([]scrolling.Glyph, len(g.text))
-		for i, r := range g.text {
-			glyphImage, letter, ok := g.fontAtlas.ExactGlyph(r)
-			if !ok {
-				glyphImage, letter, _ = g.fontAtlas.ExactGlyph(' ')
-			}
-			glyphs[i] = scrolling.Glyph{Image: glyphImage, Advance: float64(int(letter.Advance))}
-		}
-		var err error
-		g.scrollRenderer, err = scrolling.New(scrolling.Config{Glyphs: glyphs})
-		if err != nil {
-			panic(err)
-		}
-	}
-	state := g.scrollRenderer.Window(letterOffset, float64(g.surfScroll.Bounds().Dx()))
-	g.scrollRenderer.DrawAt(g.surfScroll, state)
-}
-
-func appendScanline(
-	vertices []ebiten.Vertex,
-	indices []uint16,
-	destinationY, sourceX, sourceY int,
-) ([]ebiten.Vertex, []uint16) {
-	base := uint16(len(vertices))
-	dstTop := float32(destinationY)
-	dstBottom := dstTop + 1
-	srcLeft := float32(sourceX)
-	srcRight := srcLeft + screenWidth
-	srcTop := float32(sourceY)
-	srcBottom := srcTop + 1
-
-	vertices = append(vertices,
-		ebiten.Vertex{DstX: 0, DstY: dstTop, SrcX: srcLeft, SrcY: srcTop, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: screenWidth, DstY: dstTop, SrcX: srcRight, SrcY: srcTop, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: 0, DstY: dstBottom, SrcX: srcLeft, SrcY: srcBottom, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: screenWidth, DstY: dstBottom, SrcX: srcRight, SrcY: srcBottom, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-	)
-	indices = append(indices, base, base+1, base+2, base+1, base+3, base+2)
-	return vertices, indices
-}
 
 func positiveMod(value, modulus int) int {
 	result := value % modulus
@@ -66,12 +17,10 @@ func positiveMod(value, modulus int) int {
 	return result
 }
 
-func (g *Game) renderDistortion(bounceBack, bounceFront int) {
+func (g *Game) renderDistortion(bounceBack int) {
 	if g.backgroundBatch == nil {
 		g.backgroundBatch = composite.NewQuadBatch(screenHeight)
-		g.frontBatch = composite.NewQuadBatch(screenHeight)
 		g.backgroundBatch.AlternateDiagonal = true
-		g.frontBatch.AlternateDiagonal = true
 	}
 	g.surfMain.Clear()
 	g.backProgram.Fill(g.backRows[:], g.backWavePos)
@@ -83,17 +32,7 @@ func (g *Game) renderDistortion(bounceBack, bounceFront int) {
 		g.backgroundBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
 	}
 	g.backgroundBatch.Flush()
-	g.frontBatch.Begin(g.surfMain, g.surfScroll)
-	maxX := g.surfScroll.Bounds().Dx() - screenWidth
-	for line := 0; line < screenHeight; line++ {
-		wave := g.frontRows[line]
-		x := wave - g.letterDecal
-		if x >= 0 && x < maxX {
-			y := (line + bounceFront) % fontHeight
-			g.frontBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
-		}
-	}
-	g.frontBatch.Flush()
+	g.mainScroll.Draw(g.surfMain)
 }
 
 func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {

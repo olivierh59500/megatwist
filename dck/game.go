@@ -82,56 +82,40 @@ type Sprite struct {
 
 // Game contains the shared desktop and Android game state.
 type Game struct {
-	scrollRenderer              *scrolling.Scrolling
-	backgroundBatch, frontBatch *composite.QuadBatch
-	backImg                     *ebiten.Image
-	fontImg                     *ebiten.Image
-	logoImg                     *ebiten.Image
+	mainScroll      *scrolling.Scrolling
+	backgroundBatch *composite.QuadBatch
+	backImg         *ebiten.Image
+	fontImg         *ebiten.Image
+	logoImg         *ebiten.Image
 
-	surfMain    *ebiten.Image
-	surfScroll  *ebiten.Image
-	surfBack    *ebiten.Image
-	surfScroll1 *ebiten.Image
-	surfScroll2 *ebiten.Image
-	frame       *ebiten.Image
-	scaledMain  *ebiten.Image
-	overlay     *ebiten.Image
+	surfMain   *ebiten.Image
+	surfBack   *ebiten.Image
+	frame      *ebiten.Image
+	scaledMain *ebiten.Image
+	overlay    *ebiten.Image
 
 	audioContext *audio.Context
 	audioPlayer  *audio.Player
 	musicStream  *sound.Stream
 	audioReady   bool
 
-	state        gameState
-	iteration    int
-	backWavePos  int
-	frontWavePos int
-	letterNum    int
-	letterDecal  int
+	state       gameState
+	iteration   int
+	backWavePos int
 
-	introX      int
-	introLetter int
-	introTile   int
-	introSpeed  int
+	introScroll *scrolling.Scrolling
 
 	sprites   []Sprite
 	ctrSprite float64
 
-	frontProgram, backProgram *composite.DisplacementProgram
-	frontRows, backRows       [screenHeight]int
-	position                  []int
+	backProgram *composite.DisplacementProgram
+	backRows    [screenHeight]int
 
-	backgroundVertices []ebiten.Vertex
-	backgroundIndices  []uint16
-	scrollVertices     []ebiten.Vertex
-	scrollIndices      []uint16
-
-	fontAtlas       *scrolling.Atlas
-	text            []rune
-	introText       []rune
-	displayedLetter int
-	config          *Config
-	crtShader       *ebiten.Shader
+	fontAtlas *scrolling.Atlas
+	text      string
+	introText string
+	config    *Config
+	crtShader *ebiten.Shader
 
 	transitionProgress float64
 	lastState          gameState
@@ -177,14 +161,9 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 // later, on the first Update, once Android has installed its native context.
 func NewGame() *Game {
 	g := &Game{
-		state:           stateIntro,
-		lastState:       stateIntro,
-		introX:          -1,
-		introLetter:     -1,
-		introTile:       -1,
-		introSpeed:      4,
-		displayedLetter: -1,
-		config:          loadConfig(),
+		state:     stateIntro,
+		lastState: stateIntro,
+		config:    loadConfig(),
 	}
 
 	g.sprites = make([]Sprite, g.config.SpriteCount)
@@ -194,7 +173,7 @@ func NewGame() *Game {
 	}
 
 	const spaces = "               "
-	g.text = []rune(spaces +
+	g.text = spaces +
 		"BILIZIR PRESENTS HIS SECOND DEMO-SCREEN IN GOLANG USING EBITEN.     " +
 		"THE CREDITS FOR THIS SCREEN : " +
 		"ORIGINAL SCREEN AND IDEA BY DYNO, " +
@@ -205,10 +184,10 @@ func NewGame() *Game {
 		"AND NOW, SOME GREETING :  " +
 		"MEGA-GREETINGS TO ALL MEMBERS OF DMA (PDM, COCO, JINX, TWISTER, DWORKIN) AND ALL MEMBERS OF THE UNION ! " +
 		"LAST BUT NOT LEAST, I'D LIKE TO SEND A SPECIAL DEDICATION TO ALL DEMOSCENE LOVERS     " +
-		"IT'S NOW TIME TO WRAP !     ")
-	g.introText = []rune("     " +
+		"IT'S NOW TIME TO WRAP !     "
+	g.introText = "     " +
 		"ONCE UPON A TIME, THERE WAS A SCREEN CALLED <THE PARALLAX DISTORTER> BY ULM.      " +
-		"35 YEARS LATER, JUST FOR FUN, BILIZIR RECODED A VERSION IN GOLANG (ADAPTED FROM DYNO'S VERSION) !                    ")
+		"35 YEARS LATER, JUST FOR FUN, BILIZIR RECODED A VERSION IN GOLANG (ADAPTED FROM DYNO'S VERSION) !                    "
 
 	if err := g.initialize(); err != nil {
 		panic(fmt.Sprintf("initialize MegaTwist: %v", err))
@@ -239,55 +218,33 @@ func (g *Game) initialize() error {
 	}
 
 	g.surfMain = ebiten.NewImage(screenWidth, screenHeight)
-	g.surfScroll = ebiten.NewImage(scrollWidth, fontHeight)
 	g.surfBack = ebiten.NewImage(screenWidth+256, backHeight)
-	g.surfScroll1 = ebiten.NewImage(screenWidth+48, fontHeight)
-	g.surfScroll2 = ebiten.NewImage(screenWidth+48, fontHeight)
 	g.frame = ebiten.NewImage(ContentWidth, ContentHeight)
 	g.scaledMain = ebiten.NewImage(ContentWidth, ContentHeight)
 	g.overlay = ebiten.NewImage(ContentWidth, ContentHeight)
 
 	g.initFontData()
-	curves := createCurves(g.config.DistortionRate)
-	frontIntroWave := precalcWave(curves, []int{
-		cdZero, cdZero, cdZero, cdZero, cdZero,
-		cdZero, cdZero, cdZero, cdZero, cdZero,
-		cdFastSin, cdMedSin, cdSlowSin, cdSplitted,
-	})
-	frontMainWave := precalcWave(curves, []int{
-		cdSlowSin, cdSlowSin, cdSlowDist, cdSlowSin,
-		cdSlowSin, cdMedSin, cdFastSin, cdMedSin,
-		cdSlowSin, cdMedDist, cdMedSin, cdSlowSin,
-		cdSplitted,
-	})
-	backIntroWave := precalcWave(curves, []int{cdZero, cdZero, cdZero, cdZero, cdZero})
-	backMainWave := precalcWave(curves, []int{
-		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
-		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
-		bgSin1, bgSin1, bgSin2, bgSin2, bgSin3, bgSin3,
-		cdSplitted,
-	})
-
-	g.frontProgram, err = composite.NewDisplacementProgram(frontIntroWave, frontMainWave)
+	feedConfig := presets.MegaTwistIntroFeed(g.fontAtlas, g.introText)
+	g.introScroll, err = scrolling.New(scrolling.Config{Feed: &feedConfig})
 	if err != nil {
 		return err
 	}
-	g.backProgram, err = composite.NewDisplacementProgram(backIntroWave, backMainWave)
+	front, back, err := presets.MegaTwistPrograms(g.config.DistortionRate)
 	if err != nil {
 		return err
 	}
-	g.precalcPosition()
+	g.backProgram = back
+	scrollConfig := presets.MegaTwistScanlineScroll(g.fontAtlas, g.text, front)
+	g.mainScroll, err = scrolling.New(scrolling.Config{Scanline: &scrollConfig})
+	if err != nil {
+		return err
+	}
 
 	for x := 0; x < g.surfBack.Bounds().Dx(); x += g.backImg.Bounds().Dx() {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(x), 0)
 		g.surfBack.DrawImage(g.backImg, op)
 	}
-
-	g.backgroundVertices = make([]ebiten.Vertex, 0, screenHeight*4)
-	g.backgroundIndices = make([]uint16, 0, screenHeight*6)
-	g.scrollVertices = make([]ebiten.Vertex, 0, screenHeight*4)
-	g.scrollIndices = make([]uint16, 0, screenHeight*6)
 
 	if g.config.EnableCRT {
 		g.crtShader, err = ebiten.NewShader([]byte(crtShaderSrc))
@@ -339,11 +296,15 @@ func (g *Game) Update() error {
 
 	switch g.state {
 	case stateIntro:
-		g.animIntro()
+		if err := g.animIntro(); err != nil {
+			return err
+		}
 	case stateSplash:
 		g.animSplash()
 	case stateDemo:
-		g.animDemo()
+		if err := g.animDemo(); err != nil {
+			return err
+		}
 	}
 
 	if g.transitionProgress > 0 && g.transitionProgress < 1 {

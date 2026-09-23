@@ -1,58 +1,11 @@
 package megatwist
 
 import (
-	"github.com/olivierh59500/democonstructionkit/composite"
-	"github.com/olivierh59500/democonstructionkit/presets"
+	"github.com/hajimehoshi/ebiten/v2"
+	kit "github.com/olivierh59500/democonstructionkit"
 	"image/color"
 	"math"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
-
-func createCurves(distortionRate float64) [][]int {
-	curves, err := presets.RibbonCurves(distortionRate)
-	if err != nil {
-		panic(err)
-	}
-	return curves
-}
-
-func precalcWave(curves [][]int, waveTypes []int) []int {
-	values, err := composite.JoinDeltaCurves(curves, waveTypes)
-	if err != nil {
-		panic(err)
-	}
-	return values
-}
-
-func (g *Game) precalcPosition() {
-	g.position = make([]int, 0, len(g.text))
-	position := 0
-	for _, char := range g.text {
-		if _, letter, ok := g.fontAtlas.ExactGlyph(char); ok {
-			position += int(letter.Advance)
-			g.position = append(g.position, position)
-		}
-	}
-}
-
-func getSum(values []int, index, decal int) int {
-	return composite.CumulativeAt(values, index, decal)
-}
-
-func (g *Game) getPosition(index int) int {
-	if index > 0 && index <= len(g.position) {
-		return getSum(g.position, index-1, 0)
-	}
-	return 0
-}
-
-func getLetter(text []rune, position int) rune {
-	if len(text) == 0 {
-		return ' '
-	}
-	return text[position%len(text)]
-}
 
 func (g *Game) updateSprites() {
 	const (
@@ -71,43 +24,22 @@ func (g *Game) updateSprites() {
 	}
 }
 
-func (g *Game) animIntro() {
-	if g.introX < 0 {
-		if g.introTile >= 0 {
-			if _, letter, ok := g.fontAtlas.ExactGlyph(getLetter(g.introText, g.introTile)); ok {
-				g.introX += int(letter.Advance)
-			}
-		}
-		g.introLetter++
-		if g.introLetter >= len(g.introText) {
-			g.lastState = g.state
-			g.state = stateSplash
-			g.iteration = 0
-			g.transitionProgress = 0
-			return
-		}
-		g.introTile = g.introLetter
+func (g *Game) animIntro() error {
+	if err := g.introScroll.Update(kit.Frame{}); err != nil {
+		return err
 	}
-	g.introX -= g.introSpeed
-
-	// Shift into the spare surface, then swap the two pointers. This replaces
-	// both a transient SubImage and an unnecessary full-surface copy.
-	g.surfScroll2.Clear()
-	shift := &ebiten.DrawImageOptions{}
-	shift.GeoM.Translate(float64(-g.introSpeed), 0)
-	g.surfScroll2.DrawImage(g.surfScroll1, shift)
-	g.surfScroll1, g.surfScroll2 = g.surfScroll2, g.surfScroll1
-
-	if glyphImage, _, ok := g.fontAtlas.ExactGlyph(getLetter(g.introText, g.introTile)); ok {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(screenWidth+g.introX), 0)
-		g.surfScroll1.DrawImage(glyphImage, op)
+	if g.introScroll.Finished() {
+		g.lastState = g.state
+		g.state = stateSplash
+		g.iteration = 0
+		g.transitionProgress = 0
+		return nil
 	}
-
 	g.surfMain.Fill(color.Black)
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(0, 170)
-	g.surfMain.DrawImage(g.surfScroll1, op)
+	g.surfMain.DrawImage(g.introScroll.Image(), op)
+	return nil
 }
 
 func (g *Game) animSplash() {
@@ -123,45 +55,19 @@ func (g *Game) animSplash() {
 	g.surfMain.Fill(color.Black)
 }
 
-func (g *Game) animDemo() {
+func (g *Game) animDemo() error {
+	if err := g.mainScroll.Update(kit.Frame{Tick: uint64(g.iteration)}); err != nil {
+		return err
+	}
 	g.calculateAndRenderDemo()
 	g.iteration++
 	g.backWavePos = g.iteration * 5
-	g.frontWavePos = g.iteration * 10
-	g.ctrSprite += 0.02
+	g.ctrSprite += .02
 	g.updateSprites()
+	return nil
 }
 
 func (g *Game) calculateAndRenderDemo() {
-	bounceBack := int(30 * math.Abs(math.Sin(float64(g.iteration)*0.1)))
-	bounceFront := int(18 * math.Abs(math.Sin(float64(g.iteration)*0.1)))
-
-	g.frontProgram.Fill(g.frontRows[:], g.frontWavePos)
-	decalX := math.MaxInt
-	for line := 0; line < screenHeight; line++ {
-		decalX = min(decalX, g.frontRows[line])
-	}
-	decalX = max(decalX, 0)
-
-	direction := 0
-	if decalX > g.letterDecal {
-		direction = 1
-	} else if decalX < g.letterDecal {
-		direction = -1
-	}
-	if direction != 0 {
-		offset := 0
-		for decalX < g.getPosition(g.letterNum+offset) || g.getPosition(g.letterNum+offset+1) <= decalX {
-			offset += direction
-			if g.letterNum+offset < 0 || g.letterNum+offset >= len(g.position) {
-				break
-			}
-		}
-		g.letterNum += offset
-	}
-	g.letterNum = min(max(g.letterNum, 0), len(g.position)-1)
-	g.letterDecal = g.getPosition(g.letterNum)
-
-	g.displayText(g.letterNum)
-	g.renderDistortion(bounceBack, bounceFront)
+	bounceBack := int(30 * math.Abs(math.Sin(float64(g.iteration)*.1)))
+	g.renderDistortion(bounceBack)
 }
