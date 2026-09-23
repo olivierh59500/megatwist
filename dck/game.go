@@ -4,7 +4,7 @@ package megatwist
 import (
 	"bytes"
 	"fmt"
-	"image"
+	"github.com/olivierh59500/democonstructionkit/presets"
 	"image/color"
 	"log"
 	originalassets "megatwist"
@@ -75,11 +75,6 @@ func (s gameState) String() string {
 	}
 }
 
-type Letter struct {
-	width int
-	glyph *ebiten.Image
-}
-
 type Sprite struct {
 	x float64
 	y float64
@@ -131,7 +126,7 @@ type Game struct {
 	scrollVertices     []ebiten.Vertex
 	scrollIndices      []uint16
 
-	letterData      map[rune]Letter
+	fontAtlas       *scrolling.Atlas
 	text            []rune
 	introText       []rune
 	displayedLetter int
@@ -189,7 +184,6 @@ func NewGame() *Game {
 		introTile:       -1,
 		introSpeed:      4,
 		displayedLetter: -1,
-		letterData:      make(map[rune]Letter, 48),
 		config:          loadConfig(),
 	}
 
@@ -318,37 +312,10 @@ func loadImage(name string) (*ebiten.Image, error) {
 }
 
 func (g *Game) initFontData() {
-	definitions := []struct {
-		char  rune
-		x, y  int
-		width int
-	}{
-		{' ', 0, 0, 32}, {'!', 48, 0, 16}, {'"', 96, 0, 32}, {'\'', 336, 0, 16},
-		{'(', 384, 0, 32}, {')', 432, 0, 32}, {'+', 48, 36, 48}, {',', 96, 36, 16},
-		{'-', 144, 36, 32}, {'.', 192, 36, 16}, {'0', 288, 36, 48}, {'1', 336, 36, 48},
-		{'2', 384, 36, 48}, {'3', 432, 36, 48}, {'4', 0, 72, 48}, {'5', 48, 72, 48},
-		{'6', 96, 72, 48}, {'7', 144, 72, 48}, {'8', 192, 72, 48}, {'9', 240, 72, 48},
-		{':', 288, 72, 16}, {';', 336, 72, 16}, {'<', 384, 72, 32}, {'=', 432, 72, 32},
-		{'>', 0, 108, 32}, {'?', 48, 108, 48}, {'A', 144, 108, 48}, {'B', 192, 108, 48},
-		{'C', 240, 108, 48}, {'D', 288, 108, 48}, {'E', 336, 108, 48}, {'F', 384, 108, 48},
-		{'G', 432, 108, 48}, {'H', 0, 144, 48}, {'I', 48, 144, 16}, {'J', 96, 144, 48},
-		{'K', 144, 144, 48}, {'L', 192, 144, 48}, {'M', 240, 144, 48}, {'N', 288, 144, 48},
-		{'O', 336, 144, 48}, {'P', 384, 144, 48}, {'Q', 432, 144, 48}, {'R', 0, 180, 48},
-		{'S', 48, 180, 48}, {'T', 96, 180, 48}, {'U', 144, 180, 48}, {'V', 192, 180, 48},
-		{'W', 240, 180, 48}, {'X', 288, 180, 48}, {'Y', 336, 180, 48}, {'Z', 384, 180, 48},
-	}
-
-	for _, definition := range definitions {
-		rect := image.Rect(
-			definition.x,
-			definition.y,
-			definition.x+definition.width,
-			definition.y+fontHeight,
-		)
-		g.letterData[definition.char] = Letter{
-			width: definition.width,
-			glyph: g.fontImg.SubImage(rect).(*ebiten.Image),
-		}
+	var err error
+	g.fontAtlas, err = presets.FontAtlas("megatwist", g.fontImg)
+	if err != nil {
+		panic(err)
 	}
 }
 

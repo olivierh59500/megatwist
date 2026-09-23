@@ -19,11 +19,11 @@ func (g *Game) displayText(letterOffset int) {
 	if g.scrollRenderer == nil {
 		glyphs := make([]scrolling.Glyph, len(g.text))
 		for i, r := range g.text {
-			letter, ok := g.letterData[r]
+			glyphImage, letter, ok := g.fontAtlas.ExactGlyph(r)
 			if !ok {
-				letter = g.letterData[' ']
+				glyphImage, letter, _ = g.fontAtlas.ExactGlyph(' ')
 			}
-			glyphs[i] = scrolling.Glyph{Image: letter.glyph, Advance: float64(letter.width)}
+			glyphs[i] = scrolling.Glyph{Image: glyphImage, Advance: float64(int(letter.Advance))}
 		}
 		var err error
 		g.scrollRenderer, err = scrolling.New(scrolling.Config{Glyphs: glyphs})

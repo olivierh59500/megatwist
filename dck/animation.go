@@ -29,8 +29,8 @@ func (g *Game) precalcPosition() {
 	g.position = make([]int, 0, len(g.text))
 	position := 0
 	for _, char := range g.text {
-		if letter, ok := g.letterData[char]; ok {
-			position += letter.width
+		if _, letter, ok := g.fontAtlas.ExactGlyph(char); ok {
+			position += int(letter.Advance)
 			g.position = append(g.position, position)
 		}
 	}
@@ -74,8 +74,8 @@ func (g *Game) updateSprites() {
 func (g *Game) animIntro() {
 	if g.introX < 0 {
 		if g.introTile >= 0 {
-			if letter, ok := g.letterData[getLetter(g.introText, g.introTile)]; ok {
-				g.introX += letter.width
+			if _, letter, ok := g.fontAtlas.ExactGlyph(getLetter(g.introText, g.introTile)); ok {
+				g.introX += int(letter.Advance)
 			}
 		}
 		g.introLetter++
@@ -98,10 +98,10 @@ func (g *Game) animIntro() {
 	g.surfScroll2.DrawImage(g.surfScroll1, shift)
 	g.surfScroll1, g.surfScroll2 = g.surfScroll2, g.surfScroll1
 
-	if letter, ok := g.letterData[getLetter(g.introText, g.introTile)]; ok {
+	if glyphImage, _, ok := g.fontAtlas.ExactGlyph(getLetter(g.introText, g.introTile)); ok {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(screenWidth+g.introX), 0)
-		g.surfScroll1.DrawImage(letter.glyph, op)
+		g.surfScroll1.DrawImage(glyphImage, op)
 	}
 
 	g.surfMain.Fill(color.Black)
