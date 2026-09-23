@@ -1,21 +1,21 @@
 // Package megatwist implements the MegaTwist Atari ST demo remake.
 package megatwist
 
-import originalassets "megatwist"
-
 import (
 	"bytes"
-
 	"fmt"
-	"github.com/olivierh59500/democonstructionkit/composite"
-	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
 	"log"
+	originalassets "megatwist"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/scrolling"
+	"github.com/olivierh59500/democonstructionkit/sound"
+
 	audio "github.com/olivierh59500/democonstructionkit/sound/output"
 )
 
@@ -104,7 +104,7 @@ type Game struct {
 
 	audioContext *audio.Context
 	audioPlayer  *audio.Player
-	ymPlayer     *YMPlayer
+	musicStream  *sound.Stream
 	audioReady   bool
 
 	state        gameState

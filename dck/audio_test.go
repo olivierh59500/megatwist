@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"testing"
+
+	"github.com/olivierh59500/democonstructionkit/sound"
 )
 
-func TestYMPlayerReadProducesStereoWithoutAllocating(t *testing.T) {
-	player, err := NewYMPlayer(musicData, sampleRate, true)
+func TestMusicStreamReadProducesStereoWithoutAllocating(t *testing.T) {
+	player, err := sound.Open("music.ym", musicData, sound.Options{SampleRate: sampleRate, Loop: true, PCMFormat: sound.PCM16, Gain: 0.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,8 +52,8 @@ func TestYMPlayerReadProducesStereoWithoutAllocating(t *testing.T) {
 	}
 }
 
-func TestYMPlayerReadAfterCloseReturnsSilence(t *testing.T) {
-	player, err := NewYMPlayer(musicData, sampleRate, true)
+func TestMusicStreamReadAfterCloseReturnsClosedPipe(t *testing.T) {
+	player, err := sound.Open("music.ym", musicData, sound.Options{SampleRate: sampleRate, Loop: true, PCMFormat: sound.PCM16, Gain: 0.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,15 +66,15 @@ func TestYMPlayerReadAfterCloseReturnsSilence(t *testing.T) {
 		pcm[i] = 0xff
 	}
 	n, err := player.Read(pcm)
-	if n != len(pcm) {
-		t.Fatalf("Read bytes = %d, want %d", n, len(pcm))
+	if n != 0 {
+		t.Fatalf("closed Read bytes = %d, want 0", n)
 	}
-	if !errors.Is(err, io.EOF) {
-		t.Fatalf("Read error = %v, want io.EOF", err)
+	if !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("Read error = %v, want io.ErrClosedPipe", err)
 	}
 	for i, value := range pcm {
-		if value != 0 {
-			t.Fatalf("PCM byte %d = %d, want silence", i, value)
+		if value != 0xff {
+			t.Fatalf("closed stream changed PCM byte %d to %d", i, value)
 		}
 	}
 }
