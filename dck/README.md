@@ -8,3 +8,9 @@ The choreography and assets remain in this repository. Reusable rendering and
 effects come from the published `github.com/olivierh59500/democonstructionkit`
 module pinned in `go.mod`. Music is opened with `sound.Open`; DCK selects the decoder from the asset and
 provides the configured stereo PCM format. The demo keeps its playback level and loop settings.
+
+The main screen uses `composite.ScanlineBackground` for its independently
+timed row-wave and vertical bounce. Its 672 × 64 tiled source and batched 276
+rows replace the local background loop; the scrolling text keeps its separate
+program. An 80-second comparison matched all 4,800 decoded frames, including
+the intro, transition and moving main screen.

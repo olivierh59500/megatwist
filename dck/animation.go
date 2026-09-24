@@ -59,15 +59,14 @@ func (g *Game) animDemo() error {
 	if err := g.mainScroll.Update(kit.Frame{Tick: uint64(g.iteration)}); err != nil {
 		return err
 	}
-	g.calculateAndRenderDemo()
+	if err := g.background.Update(kit.Frame{Tick: uint64(g.iteration), Time: float64(g.iteration) / 60, Delta: 1.0 / 60}); err != nil {
+		return err
+	}
+	g.surfMain.Clear()
+	g.background.Draw(g.surfMain)
+	g.mainScroll.Draw(g.surfMain)
 	g.iteration++
-	g.backWavePos = g.iteration * 5
 	g.ctrSprite += .02
 	g.updateSprites()
 	return nil
-}
-
-func (g *Game) calculateAndRenderDemo() {
-	bounceBack := int(30 * math.Abs(math.Sin(float64(g.iteration)*.1)))
-	g.renderDistortion(bounceBack)
 }

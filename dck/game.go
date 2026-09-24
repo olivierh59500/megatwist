@@ -82,14 +82,13 @@ type Sprite struct {
 
 // Game contains the shared desktop and Android game state.
 type Game struct {
-	mainScroll      *scrolling.Scrolling
-	backgroundBatch *composite.QuadBatch
-	backImg         *ebiten.Image
-	fontImg         *ebiten.Image
-	logoImg         *ebiten.Image
+	mainScroll *scrolling.Scrolling
+	background *composite.ScanlineBackground
+	backImg    *ebiten.Image
+	fontImg    *ebiten.Image
+	logoImg    *ebiten.Image
 
 	surfMain   *ebiten.Image
-	surfBack   *ebiten.Image
 	frame      *ebiten.Image
 	scaledMain *ebiten.Image
 	overlay    *ebiten.Image
@@ -99,17 +98,13 @@ type Game struct {
 	musicStream  *sound.Stream
 	audioReady   bool
 
-	state       gameState
-	iteration   int
-	backWavePos int
+	state     gameState
+	iteration int
 
 	introScroll *scrolling.Scrolling
 
 	sprites   []Sprite
 	ctrSprite float64
-
-	backProgram *composite.DisplacementProgram
-	backRows    [screenHeight]int
 
 	fontAtlas *scrolling.Atlas
 	text      string
@@ -218,7 +213,6 @@ func (g *Game) initialize() error {
 	}
 
 	g.surfMain = ebiten.NewImage(screenWidth, screenHeight)
-	g.surfBack = ebiten.NewImage(screenWidth+256, backHeight)
 	g.frame = ebiten.NewImage(ContentWidth, ContentHeight)
 	g.scaledMain = ebiten.NewImage(ContentWidth, ContentHeight)
 	g.overlay = ebiten.NewImage(ContentWidth, ContentHeight)
@@ -233,17 +227,20 @@ func (g *Game) initialize() error {
 	if err != nil {
 		return err
 	}
-	g.backProgram = back
+	g.background, err = composite.NewScanlineBackground(composite.ScanlineBackgroundConfig{
+		Tile: g.backImg, Program: back,
+		Width: screenWidth, Height: screenHeight,
+		SurfaceWidth: screenWidth + 256, SurfaceHeight: backHeight,
+		BaseX: 80, WaveDivisor: 2, WaveStep: 5,
+		BounceAmplitude: 30, BounceRate: .1, AlternateDiagonal: true,
+	})
+	if err != nil {
+		return err
+	}
 	scrollConfig := presets.MegaTwistScanlineScroll(g.fontAtlas, g.text, front)
 	g.mainScroll, err = scrolling.New(scrolling.Config{Scanline: &scrollConfig})
 	if err != nil {
 		return err
-	}
-
-	for x := 0; x < g.surfBack.Bounds().Dx(); x += g.backImg.Bounds().Dx() {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(x), 0)
-		g.surfBack.DrawImage(g.backImg, op)
 	}
 
 	if g.config.EnableCRT {

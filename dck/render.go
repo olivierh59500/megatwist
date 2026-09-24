@@ -2,38 +2,11 @@ package megatwist
 
 import (
 	"github.com/olivierh59500/democonstructionkit/composite"
-	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
-
-func positiveMod(value, modulus int) int {
-	result := value % modulus
-	if result < 0 {
-		return result + modulus
-	}
-	return result
-}
-
-func (g *Game) renderDistortion(bounceBack int) {
-	if g.backgroundBatch == nil {
-		g.backgroundBatch = composite.NewQuadBatch(screenHeight)
-		g.backgroundBatch.AlternateDiagonal = true
-	}
-	g.surfMain.Clear()
-	g.backProgram.Fill(g.backRows[:], g.backWavePos)
-	g.backgroundBatch.Begin(g.surfMain, g.surfBack)
-	for line := 0; line < screenHeight; line++ {
-		wave := g.backRows[line]
-		x := positiveMod(80+wave/2, g.backImg.Bounds().Dx())
-		y := (line + bounceBack) % backHeight
-		g.backgroundBatch.Rect(image.Rect(x, y, x+screenWidth, y+1), 0, float32(line), screenWidth, 1)
-	}
-	g.backgroundBatch.Flush()
-	g.mainScroll.Draw(g.surfMain)
-}
 
 func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {
 	if g.config.EnableGlow {
