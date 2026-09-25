@@ -17,6 +17,7 @@ import (
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
 	"github.com/olivierh59500/democonstructionkit/sprites"
+	"github.com/olivierh59500/democonstructionkit/timeline"
 
 	audio "github.com/olivierh59500/democonstructionkit/sound/output"
 )
@@ -97,6 +98,7 @@ type Game struct {
 
 	state     gameState
 	iteration int
+	splash    *timeline.HoldRamp
 
 	introScroll *scrolling.Scrolling
 
@@ -109,8 +111,7 @@ type Game struct {
 	config    *Config
 	crtShader *ebiten.Shader
 
-	transitionProgress float64
-	lastState          gameState
+	lastState gameState
 }
 
 const crtShaderSrc = `
@@ -156,6 +157,11 @@ func NewGame() *Game {
 		state:     stateIntro,
 		lastState: stateIntro,
 		config:    loadConfig(),
+	}
+	var err error
+	g.splash, err = timeline.NewHoldRamp(presets.MegaTwistSplashRamp())
+	if err != nil {
+		panic(err)
 	}
 
 	const spaces = "               "
@@ -314,9 +320,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	if g.transitionProgress > 0 && g.transitionProgress < 1 {
-		g.transitionProgress = min(g.transitionProgress+0.02, 1)
-	}
 	return nil
 }
 

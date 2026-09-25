@@ -8,7 +8,7 @@ import (
 )
 
 func (g *Game) drawTransition(target *ebiten.Image) {
-	progress := g.transitionProgress
+	progress := g.splash.Progress()
 	if progress <= 0 || progress >= 1 {
 		return
 	}

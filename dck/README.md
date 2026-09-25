@@ -19,3 +19,6 @@ The moving logos now use `sprites.Group` with a clamped harmonic formation.
 `sprites.GlowPainter` draws their optional layered halo from the prepared poses;
 count, frequencies, phase spacing, clipping, halo scale and opacity are editable
 without changing the screen's draw loop.
+The splash now uses `timeline.HoldRamp` with an editable 90-tick hold and
+interior progress offset. The scene still supplies its artwork and transition
+order; DCK owns the exact progression and exit tick.

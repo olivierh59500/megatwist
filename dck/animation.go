@@ -14,7 +14,7 @@ func (g *Game) animIntro() error {
 		g.lastState = g.state
 		g.state = stateSplash
 		g.iteration = 0
-		g.transitionProgress = 0
+		g.splash.Reset()
 		return nil
 	}
 	g.surfMain.Fill(color.Black)
@@ -25,14 +25,11 @@ func (g *Game) animIntro() error {
 }
 
 func (g *Game) animSplash() {
-	if g.iteration < 90 {
-		g.iteration++
-		g.transitionProgress = float64(g.iteration) / 90
-	} else {
+	if g.splash.Step() {
 		g.lastState = g.state
 		g.state = stateDemo
 		g.iteration = 0
-		g.transitionProgress = 0
+		g.splash.Reset()
 	}
 	g.surfMain.Fill(color.Black)
 }
