@@ -14,3 +14,8 @@ timed row-wave and vertical bounce. Its 672 × 64 tiled source and batched 276
 rows replace the local background loop; the scrolling text keeps its separate
 program. An 80-second comparison matched all 4,800 decoded frames, including
 the intro, transition and moving main screen.
+
+The moving logos now use `sprites.Group` with a clamped harmonic formation.
+`sprites.GlowPainter` draws their optional layered halo from the prepared poses;
+count, frequencies, phase spacing, clipping, halo scale and opacity are editable
+without changing the screen's draw loop.

@@ -1,33 +1,11 @@
 package megatwist
 
 import (
-	"github.com/olivierh59500/democonstructionkit/composite"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
-
-func (g *Game) drawGlowSprite(target *ebiten.Image, sprite *Sprite) {
-	if g.config.EnableGlow {
-		for layer := 3; layer > 0; layer-- {
-			op := &ebiten.DrawImageOptions{}
-			scale := zoom + float64(layer)*0.1
-			op.GeoM.Translate(-float64(spriteSize)/2, -float64(spriteSize)/2)
-			op.GeoM.Scale(scale, scale)
-			op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
-			op.ColorScale.ScaleAlpha(float32(0.3 / float64(layer)))
-			op.Filter = ebiten.FilterLinear
-			composite.Instance{Image: g.logoImg, Options: *op}.Draw(target)
-		}
-	}
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-float64(spriteSize)/2, -float64(spriteSize)/2)
-	op.GeoM.Scale(zoom, zoom)
-	op.GeoM.Translate(sprite.x*zoom, sprite.y*zoom)
-	composite.Instance{Image: g.logoImg, Options: *op}.Draw(target)
-}
 
 func (g *Game) drawTransition(target *ebiten.Image) {
 	progress := g.transitionProgress
@@ -67,9 +45,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	if g.state == stateDemo {
-		for i := range g.sprites {
-			g.drawGlowSprite(g.frame, &g.sprites[i])
-		}
+		g.spriteGlow.DrawGroup(g.frame, g.spriteGroup)
 	}
 	g.drawTransition(g.frame)
 

@@ -13,8 +13,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/motion"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
+	"github.com/olivierh59500/democonstructionkit/sprites"
 
 	audio "github.com/olivierh59500/democonstructionkit/sound/output"
 )
@@ -75,11 +77,6 @@ func (s gameState) String() string {
 	}
 }
 
-type Sprite struct {
-	x float64
-	y float64
-}
-
 // Game contains the shared desktop and Android game state.
 type Game struct {
 	mainScroll *scrolling.Scrolling
@@ -103,8 +100,8 @@ type Game struct {
 
 	introScroll *scrolling.Scrolling
 
-	sprites   []Sprite
-	ctrSprite float64
+	spriteGroup *sprites.Group
+	spriteGlow  *sprites.GlowPainter
 
 	fontAtlas *scrolling.Atlas
 	text      string
@@ -161,12 +158,6 @@ func NewGame() *Game {
 		config:    loadConfig(),
 	}
 
-	g.sprites = make([]Sprite, g.config.SpriteCount)
-	for i := range g.sprites {
-		g.sprites[i].x = float64(screenWidth) / 2
-		g.sprites[i].y = float64(screenHeight) / 2
-	}
-
 	const spaces = "               "
 	g.text = spaces +
 		"BILIZIR PRESENTS HIS SECOND DEMO-SCREEN IN GOLANG USING EBITEN.     " +
@@ -210,6 +201,25 @@ func (g *Game) initialize() error {
 		log.Printf("could not load logo, using placeholder: %v", err)
 		g.logoImg = ebiten.NewImage(spriteSize, spriteSize)
 		g.logoImg.Fill(color.RGBA{255, 255, 0, 255})
+	}
+	formation, err := motion.NewHarmonicFormation(presets.MegaTwistSpriteFormationConfig(screenWidth, screenHeight, spriteSize))
+	if err != nil {
+		return err
+	}
+	g.spriteGroup, err = sprites.NewGroup(sprites.GroupConfig{
+		Frames: []*ebiten.Image{g.logoImg}, Count: g.config.SpriteCount,
+		Harmonic: formation, HarmonicClockStep: [2]float64{.02},
+	})
+	if err != nil {
+		return err
+	}
+	glowConfig := presets.MegaTwistGlowPainterConfig(spriteSize, zoom)
+	if !g.config.EnableGlow {
+		glowConfig.Layers = 0
+	}
+	g.spriteGlow, err = sprites.NewGlowPainter(glowConfig)
+	if err != nil {
+		return err
 	}
 
 	g.surfMain = ebiten.NewImage(screenWidth, screenHeight)
@@ -334,7 +344,7 @@ func (g *Game) DebugSummary() string {
 		"FPS: %0.2f\nTPS: %0.2f\nSprites: %d\nState: %s\nCRT: %v",
 		ebiten.ActualFPS(),
 		ebiten.ActualTPS(),
-		len(g.sprites),
+		len(g.spriteGroup.Poses()),
 		g.state,
 		g.config.EnableCRT && g.state == stateIntro,
 	)

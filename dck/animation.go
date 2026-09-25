@@ -4,25 +4,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	kit "github.com/olivierh59500/democonstructionkit"
 	"image/color"
-	"math"
 )
-
-func (g *Game) updateSprites() {
-	const (
-		centerX = float64(screenWidth) / 2
-		centerY = float64(screenHeight) / 2
-		half    = float64(spriteSize) / 2
-	)
-	for i := range g.sprites {
-		phase := g.ctrSprite + float64(i)*0.155
-		x := centerX + 100*math.Sin(phase*1.35+1.25) + 100*math.Sin(phase*1.86+0.54)
-		y := centerY + 60*math.Cos(phase*1.72+0.23) + 60*math.Cos(phase*1.63+0.98)
-		x += 20 * math.Sin(float64(i)*0.289+1.15)
-		y += 20 * math.Cos(float64(i)*0.456+0.85)
-		g.sprites[i].x = min(max(x, half), float64(screenWidth)-half)
-		g.sprites[i].y = min(max(y, half), float64(screenHeight)-half)
-	}
-}
 
 func (g *Game) animIntro() error {
 	if err := g.introScroll.Update(kit.Frame{}); err != nil {
@@ -66,7 +48,5 @@ func (g *Game) animDemo() error {
 	g.background.Draw(g.surfMain)
 	g.mainScroll.Draw(g.surfMain)
 	g.iteration++
-	g.ctrSprite += .02
-	g.updateSprites()
-	return nil
+	return g.spriteGroup.Update(kit.Frame{})
 }
