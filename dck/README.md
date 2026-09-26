@@ -22,6 +22,14 @@ without changing the screen's draw loop.
 The splash now uses `timeline.HoldRamp` with an editable 90-tick hold and
 interior progress offset. The scene still supplies its artwork and transition
 order; DCK owns the exact progression and exit tick.
+The intro CRT now uses `effects.CRTOverlay` and the shared
+`presets.ClassicCRTOverlay` recipe with copy blending. Curvature, scanlines,
+chromatic shift, vignette and blend can be changed independently of the intro
+text. Complete GPU captures at ticks 0, 60 and 240 differ from the former
+local shader at 0, 2 and 2 chromatic-sampling pixels respectively.
+The updated DCK APK also ran on a Pixel 10a: 744 distinct presented-frame
+intervals had p95 16.764 ms, maximum 16.933 ms and none above 20 ms across a
+short post-installation sampling window.
 The previous black transition image never affected output: it was drawn only
 over an already black splash, then its progress reset to zero before the first
 main frame. This DCK version no longer allocates or draws that unused 832 × 552

@@ -9,16 +9,13 @@ import (
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.frame.Clear()
-	if g.config.EnableCRT && g.crtShader != nil && g.state == stateIntro {
+	if g.config.EnableCRT && g.crt != nil && g.state == stateIntro {
 		g.scaledMain.Clear()
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(zoom, zoom)
 		g.scaledMain.DrawImage(g.surfMain, op)
 
-		shaderOptions := &ebiten.DrawRectShaderOptions{}
-		shaderOptions.Images[0] = g.scaledMain
-		shaderOptions.Blend = ebiten.BlendCopy
-		g.frame.DrawRectShader(ContentWidth, ContentHeight, g.crtShader, shaderOptions)
+		g.crt.DrawAt(g.frame, g.scaledMain, 0, 0)
 	} else {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(zoom, zoom)

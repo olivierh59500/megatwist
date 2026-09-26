@@ -13,6 +13,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/effects"
 	"github.com/olivierh59500/democonstructionkit/motion"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
@@ -108,44 +109,8 @@ type Game struct {
 	text      string
 	introText string
 	config    *Config
-	crtShader *ebiten.Shader
+	crt       *effects.CRTOverlay
 }
-
-const crtShaderSrc = `
-package main
-
-func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
-	var uv vec2
-	uv = texCoord
-
-	var dc vec2
-	dc = uv - 0.5
-	dc = dc * (1.0 + dot(dc, dc) * 0.15)
-	uv = dc + 0.5
-
-	if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
-		return vec4(0.0, 0.0, 0.0, 1.0)
-	}
-
-	var col vec4
-	col = imageSrc0At(uv)
-	var scanline float
-	scanline = sin(uv.y * 800.0) * 0.04
-	col.rgb = col.rgb - scanline
-
-	var rShift float
-	var bShift float
-	rShift = imageSrc0At(uv + vec2(0.002, 0.0)).r
-	bShift = imageSrc0At(uv - vec2(0.002, 0.0)).b
-	col.r = rShift
-	col.b = bShift
-
-	var vignette float
-	vignette = 1.0 - dot(dc, dc) * 0.5
-	col.rgb = col.rgb * vignette
-	return col * color
-}
-`
 
 // NewGame builds the platform-independent game. Audio is intentionally opened
 // later, on the first Update, once Android has installed its native context.
@@ -255,7 +220,9 @@ func (g *Game) initialize() error {
 	}
 
 	if g.config.EnableCRT {
-		g.crtShader, err = ebiten.NewShader([]byte(crtShaderSrc))
+		crtConfig := presets.ClassicCRTOverlay()
+		crtConfig.Blend = ebiten.BlendCopy
+		g.crt, err = effects.NewCRTOverlay(crtConfig)
 		if err != nil {
 			log.Printf("could not compile CRT shader: %v", err)
 			g.config.EnableCRT = false
