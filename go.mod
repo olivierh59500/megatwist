@@ -20,7 +20,7 @@ require (
 	github.com/ebitengine/oto/v3 v3.4.1 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
-	github.com/olivierh59500/democonstructionkit v0.0.0-20260925173606-4ee2d90a656d
+	github.com/olivierh59500/democonstructionkit v0.0.0-20260926092633-e0ac2ee372a4
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )

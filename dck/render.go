@@ -7,25 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-func (g *Game) drawTransition(target *ebiten.Image) {
-	progress := g.splash.Progress()
-	if progress <= 0 || progress >= 1 {
-		return
-	}
-
-	g.overlay.Fill(color.RGBA{0, 0, 0, uint8(255 * (1 - progress))})
-	if g.lastState == stateSplash && g.state == stateDemo {
-		op := &ebiten.DrawImageOptions{}
-		scale := 1 + (1-progress)*0.2
-		op.GeoM.Translate(-float64(ContentWidth)/2, -float64(ContentHeight)/2)
-		op.GeoM.Scale(scale, scale)
-		op.GeoM.Translate(float64(ContentWidth)/2, float64(ContentHeight)/2)
-		target.DrawImage(g.overlay, op)
-		return
-	}
-	target.DrawImage(g.overlay, nil)
-}
-
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.frame.Clear()
 	if g.config.EnableCRT && g.crtShader != nil && g.state == stateIntro {
@@ -47,8 +28,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.state == stateDemo {
 		g.spriteGlow.DrawGroup(g.frame, g.spriteGroup)
 	}
-	g.drawTransition(g.frame)
-
 	if ebiten.IsKeyPressed(ebiten.KeyTab) {
 		ebitenutil.DebugPrint(g.frame, g.DebugSummary())
 	}

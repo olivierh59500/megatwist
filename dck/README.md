@@ -22,3 +22,7 @@ without changing the screen's draw loop.
 The splash now uses `timeline.HoldRamp` with an editable 90-tick hold and
 interior progress offset. The scene still supplies its artwork and transition
 order; DCK owns the exact progression and exit tick.
+The previous black transition image never affected output: it was drawn only
+over an already black splash, then its progress reset to zero before the first
+main frame. This DCK version no longer allocates or draws that unused 832 × 552
+surface; the original production source is unchanged.

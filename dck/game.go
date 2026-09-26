@@ -89,7 +89,6 @@ type Game struct {
 	surfMain   *ebiten.Image
 	frame      *ebiten.Image
 	scaledMain *ebiten.Image
-	overlay    *ebiten.Image
 
 	audioContext *audio.Context
 	audioPlayer  *audio.Player
@@ -110,8 +109,6 @@ type Game struct {
 	introText string
 	config    *Config
 	crtShader *ebiten.Shader
-
-	lastState gameState
 }
 
 const crtShaderSrc = `
@@ -154,9 +151,8 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 // later, on the first Update, once Android has installed its native context.
 func NewGame() *Game {
 	g := &Game{
-		state:     stateIntro,
-		lastState: stateIntro,
-		config:    loadConfig(),
+		state:  stateIntro,
+		config: loadConfig(),
 	}
 	var err error
 	g.splash, err = timeline.NewHoldRamp(presets.MegaTwistSplashRamp())
@@ -231,7 +227,6 @@ func (g *Game) initialize() error {
 	g.surfMain = ebiten.NewImage(screenWidth, screenHeight)
 	g.frame = ebiten.NewImage(ContentWidth, ContentHeight)
 	g.scaledMain = ebiten.NewImage(ContentWidth, ContentHeight)
-	g.overlay = ebiten.NewImage(ContentWidth, ContentHeight)
 
 	g.initFontData()
 	feedConfig := presets.MegaTwistIntroFeed(g.fontAtlas, g.introText)

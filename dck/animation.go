@@ -11,7 +11,6 @@ func (g *Game) animIntro() error {
 		return err
 	}
 	if g.introScroll.Finished() {
-		g.lastState = g.state
 		g.state = stateSplash
 		g.iteration = 0
 		g.splash.Reset()
@@ -26,7 +25,6 @@ func (g *Game) animIntro() error {
 
 func (g *Game) animSplash() {
 	if g.splash.Step() {
-		g.lastState = g.state
 		g.state = stateDemo
 		g.iteration = 0
 		g.splash.Reset()
