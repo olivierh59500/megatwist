@@ -3,6 +3,25 @@
 Recréation d’un écran Atari ST « Parallax Distorter » en Go avec Ebitengine.
 Le même cœur de jeu fonctionne sur macOS et Android.
 
+<!-- Project showcase -->
+## Screenshots
+
+[![Twisting repeated text planes with a trail of small DMA logos](docs/media/screenshot-1.png)](docs/media/screenshot-1.png)
+
+Twisting repeated text planes with a trail of small DMA logos.
+
+## Video
+
+[![Animated preview of MegaTwist](docs/media/preview.gif)](https://github.com/olivierh59500/megatwist/raw/refs/heads/main/docs/media/preview.mp4)
+
+**[Watch or download the 24-second MP4 preview with sound](https://github.com/olivierh59500/megatwist/raw/refs/heads/main/docs/media/preview.mp4)**
+
+This preview is captured from the Go production.
+
+The animated image is silent; the MP4 includes the soundtrack.
+
+<!-- End project showcase -->
+
 ## Lancer sur ordinateur
 
 ```sh
